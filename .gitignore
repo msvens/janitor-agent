@@ -1,0 +1,15 @@
+node_modules/
+dist/
+state.json
+*.log
+*.err
+.DS_Store
+.idea/
+
+# Personal config (copy config.example.yaml to config.yaml and edit)
+config.yaml
+
+# Working notes
+FINDINGS.md
+newdirection.txt
+Modelfile
