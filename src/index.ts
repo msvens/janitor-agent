@@ -1,8 +1,8 @@
 import { loadConfig } from "./config.js";
 import { loadState, saveState } from "./state.js";
-import { initBacklog, loadBacklog, addTasks, needsPlanning, getNextTask, updateTaskStatus, findTaskByPR } from "./backlog.js";
-import { analyzeRepo, addressComments } from "./agent.js";
-import { executeTask, fixTestFailures } from "./action.js";
+import { initBacklog, loadBacklog, addTasks, getNextTask, updateTaskStatus, findTaskByPR } from "./backlog.js";
+import { addressComments } from "./agent.js";
+import { executeTask } from "./action.js";
 import { planRepo } from "./planner.js";
 import {
   cloneRepo,
@@ -15,9 +15,9 @@ import {
   checkPRStatus,
   getPRComments,
   ensureWorkspace,
-  runTests,
+  installDeps,
 } from "./github.js";
-import type { State, TrackedPR, Config, RepoConfig } from "./types.js";
+import type { State, TrackedPR, Config } from "./types.js";
 
 const DRY_RUN = process.argv.includes("--dry-run");
 
@@ -26,10 +26,7 @@ function log(msg: string) {
   console.log(`[${ts}] ${msg}`);
 }
 
-function todayBranch(type: string): string {
-  const date = new Date().toISOString().slice(0, 10);
-  return `janitor/${type}-${date}`;
-}
+// --- Reconciliation ---
 
 async function reconcileOpenPRs(state: State): Promise<void> {
   const remaining: TrackedPR[] = [];
@@ -42,7 +39,6 @@ async function reconcileOpenPRs(state: State): Promise<void> {
         remaining.push(pr);
       } else {
         log(`PR #${pr.pr_number} in ${pr.repo} is ${status.state}, removing from tracking`);
-        // Update backlog task status
         const task = await findTaskByPR(pr.repo, pr.pr_number);
         if (task) {
           const newStatus = status.state === "MERGED" ? "completed" : "failed";
@@ -52,7 +48,7 @@ async function reconcileOpenPRs(state: State): Promise<void> {
       }
     } catch (err) {
       log(`Failed to check PR #${pr.pr_number} in ${pr.repo}: ${err}`);
-      remaining.push(pr); // Keep it tracked if we can't check
+      remaining.push(pr);
     }
   }
 
@@ -79,7 +75,6 @@ async function handleReviewComments(state: State, config: Config, costBudget: { 
 
       const repoDir = await cloneRepo(pr.repo);
       try {
-        // Checkout the PR branch
         const { execFile } = await import("node:child_process");
         const { promisify } = await import("node:util");
         const exec = promisify(execFile);
@@ -102,91 +97,34 @@ async function handleReviewComments(state: State, config: Config, costBudget: { 
   }
 }
 
-function pickNextRepo(config: Config, state: State): typeof config.repos[number] | null {
-  // Skip repos that already have an open janitor PR
-  const reposWithOpenPRs = new Set(state.open_prs.map((p) => p.repo));
+// --- Reconcile mode ---
 
-  const candidates = config.repos.filter((r) => !reposWithOpenPRs.has(r.name));
-  if (candidates.length === 0) return null;
+async function runReconcile(): Promise<void> {
+  const config = await loadConfig();
+  initBacklog(config.planning.backlog_dir);
+  const state = await loadState();
+  const costBudget = { remaining: config.max_cost_per_run };
 
-  // Pick the least recently analyzed
-  candidates.sort((a, b) => {
-    const aTime = state.repo_history[a.name]?.last_analyzed ?? "1970-01-01T00:00:00Z";
-    const bTime = state.repo_history[b.name]?.last_analyzed ?? "1970-01-01T00:00:00Z";
-    return aTime.localeCompare(bTime);
-  });
+  log("Reconciling open PRs...");
+  await reconcileOpenPRs(state);
+  log(`Tracking ${state.open_prs.length} open PRs`);
 
-  return candidates[0]!;
-}
-
-async function analyzeAndCreatePR(
-  repoConfig: RepoConfig,
-  config: Config,
-  state: State,
-  costBudget: { remaining: number }
-): Promise<void> {
-  const { name: repo, aggressiveness, branch } = repoConfig;
-
-  log(`Analyzing ${repo} (aggressiveness=${aggressiveness}, backend=${repoConfig.backend})`);
-
-  const repoDir = await cloneRepo(repo);
-  try {
-    const branchName = todayBranch("maintenance");
-    await createBranch(repoDir, branchName);
-
-    const abortController = new AbortController();
-
-    const { result, costUsd } = await analyzeRepo(repoDir, aggressiveness, config, repoConfig.backend, abortController);
-    costBudget.remaining -= costUsd;
-    log(`Analysis cost: $${costUsd.toFixed(4)}, remaining budget: $${costBudget.remaining.toFixed(4)}`);
-
-    // Update history regardless of outcome
-    state.repo_history[repo] = {
-      ...state.repo_history[repo],
-      last_analyzed: new Date().toISOString(),
-    };
-
-    if (!result.has_changes) {
-      log(`No changes needed for ${repo}`);
-      return;
-    }
-
-    if (!(await hasChanges(repoDir))) {
-      log(`Agent reported changes but git shows no diff for ${repo}, skipping`);
-      return;
-    }
-
-    if (DRY_RUN) {
-      log(`[DRY RUN] Would create PR for ${repo}: ${result.pr_title}`);
-      log(`Summary:\n${result.summary}`);
-      return;
-    }
-
-    await ensureLabelExists(repo);
-    await commitAndPush(repoDir, branchName, result.pr_title);
-    const prNumber = await createPR(repo, result.pr_title, result.pr_body, branchName, branch);
-
-    state.open_prs.push({
-      repo,
-      pr_number: prNumber,
-      branch: branchName,
-      created_at: new Date().toISOString(),
-      last_checked: new Date().toISOString(),
-    });
-
-    state.repo_history[repo]!.last_pr_created = new Date().toISOString();
-    log(`Created PR #${prNumber} for ${repo}`);
-  } finally {
-    await cleanupRepo(repoDir);
+  if (state.open_prs.length > 0) {
+    log("Checking for review comments...");
+    await handleReviewComments(state, config, costBudget);
   }
+
+  await saveState(state);
+  log("Reconcile done");
 }
+
+// --- Plan mode ---
 
 async function planRepos(): Promise<void> {
   const config = await loadConfig();
   initBacklog(config.planning.backlog_dir);
   const costBudget = { remaining: config.max_cost_per_run };
 
-  // Check if a specific repo was requested
   const repoIdx = process.argv.indexOf("--repo");
   const repoArg = repoIdx !== -1 ? process.argv[repoIdx + 1] : undefined;
 
@@ -206,8 +144,6 @@ async function planRepos(): Promise<void> {
     }
 
     const backlog = await loadBacklog(repoConfig.name);
-    // Skip only in automatic mode (future); --plan always runs
-    // But still log existing state for visibility
     const pending = backlog.tasks.filter((t) => t.status === "pending").length;
     if (pending > 0) {
       log(`${repoConfig.name}: ${pending} existing pending tasks (will find new ones)`);
@@ -239,6 +175,8 @@ async function planRepos(): Promise<void> {
 
   log("Planning done");
 }
+
+// --- Action mode ---
 
 async function runAction(): Promise<void> {
   const config = await loadConfig();
@@ -284,7 +222,13 @@ async function runAction(): Promise<void> {
       const branchName = `janitor/${task.id}`;
       await createBranch(repoDir, branchName);
 
-      const { result, costUsd } = await executeTask(task, repoDir, config, repoConfig.backend);
+      // Install dependencies once before subtask loop
+      if (repoConfig.install_command) {
+        await installDeps(repoDir, repoConfig.install_command);
+      }
+
+      // executeTask handles subtask-by-subtask execution + testing
+      const { result, costUsd } = await executeTask(task, repoDir, config, repoConfig);
       costBudget.remaining -= costUsd;
       log(`Action cost: $${costUsd.toFixed(4)}, remaining: $${costBudget.remaining.toFixed(4)}`);
 
@@ -294,31 +238,10 @@ async function runAction(): Promise<void> {
         continue;
       }
 
-      // Test loop
-      if (repoConfig.test_command) {
-        let testResult = await runTests(repoDir, repoConfig.test_command, repoConfig.install_command);
-        let retries = 0;
-        const maxRetries = 2;
-
-        while (!testResult.passed && retries < maxRetries) {
-          retries++;
-          log(`Tests failed (attempt ${retries}/${maxRetries}), asking agent to fix...`);
-          const fixCost = await fixTestFailures(testResult.output, repoDir, config, repoConfig.backend);
-          costBudget.remaining -= fixCost.costUsd;
-          testResult = await runTests(repoDir, repoConfig.test_command, repoConfig.install_command);
-        }
-
-        if (!testResult.passed) {
-          log(`Tests still failing after ${maxRetries} retries, marking task failed`);
-          await updateTaskStatus(repoConfig.name, task.id, "failed");
-          continue;
-        }
-      }
-
       if (DRY_RUN) {
         log(`[DRY RUN] Would create PR: ${result.pr_title}`);
         log(`Summary:\n${result.summary}`);
-        await updateTaskStatus(repoConfig.name, task.id, "pending"); // Reset to pending
+        await updateTaskStatus(repoConfig.name, task.id, "pending");
         continue;
       }
 
@@ -354,6 +277,21 @@ async function runAction(): Promise<void> {
   log("Action done");
 }
 
+// --- Entry point ---
+
+function printUsage(): void {
+  console.log(`Usage: tsx src/index.ts <mode> [options]
+
+Modes:
+  --plan          Survey repos and build task backlogs
+  --action        Execute next pending task from backlogs
+  --reconcile     Check open PRs, handle review comments
+
+Options:
+  --repo <name>   Target a specific repo (owner/repo)
+  --dry-run       Run without creating PRs or modifying state`);
+}
+
 async function main(): Promise<void> {
   if (process.argv.includes("--plan")) {
     return planRepos();
@@ -361,47 +299,11 @@ async function main(): Promise<void> {
   if (process.argv.includes("--action")) {
     return runAction();
   }
-
-  log(`Janitor Agent starting${DRY_RUN ? " (DRY RUN)" : ""}`);
-
-  const config = await loadConfig();
-  const state = await loadState();
-  const costBudget = { remaining: config.max_cost_per_run };
-
-  // Step 1: Reconcile tracked PRs (remove merged/closed)
-  log("Reconciling open PRs...");
-  await reconcileOpenPRs(state);
-  log(`Tracking ${state.open_prs.length} open PRs`);
-
-  // Step 2: Handle review comments on open PRs
-  if (state.open_prs.length > 0) {
-    log("Checking for review comments...");
-    await handleReviewComments(state, config, costBudget);
+  if (process.argv.includes("--reconcile")) {
+    return runReconcile();
   }
 
-  // Step 3: Analyze repos if under PR limit
-  if (state.open_prs.length < config.max_open_prs && costBudget.remaining > 0) {
-    const repo = pickNextRepo(config, state);
-    if (repo) {
-      try {
-        await analyzeAndCreatePR(repo, config, state, costBudget);
-      } catch (err) {
-        log(`Error analyzing ${repo.name}: ${err}`);
-      }
-    } else {
-      log("No repos eligible for analysis (all have open janitor PRs)");
-    }
-  } else {
-    log(
-      costBudget.remaining <= 0
-        ? "Budget exhausted, skipping analysis"
-        : `At PR limit (${state.open_prs.length}/${config.max_open_prs}), skipping analysis`
-    );
-  }
-
-  // Step 4: Save state
-  await saveState(state);
-  log("Done");
+  printUsage();
 }
 
 main().catch((err) => {

@@ -38,6 +38,15 @@ export async function updateWorkspace(repoDir: string, branch: string): Promise<
   await exec("git", ["clean", "-fd"], { cwd: repoDir });
 }
 
+export async function installDeps(
+  repoDir: string,
+  installCommand?: string,
+): Promise<void> {
+  if (!installCommand) return;
+  log(`Installing dependencies: ${installCommand}`);
+  await execShell(installCommand, { cwd: repoDir, timeout: 120_000 });
+}
+
 export async function runTests(
   repoDir: string,
   testCommand?: string,
@@ -46,8 +55,7 @@ export async function runTests(
   if (!testCommand) return { passed: true, output: "" };
 
   if (installCommand) {
-    log(`Installing dependencies: ${installCommand}`);
-    await execShell(installCommand, { cwd: repoDir, timeout: 120_000 });
+    await installDeps(repoDir, installCommand);
   }
 
   log(`Running tests: ${testCommand}`);
