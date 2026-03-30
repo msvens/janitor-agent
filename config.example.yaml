@@ -10,22 +10,21 @@ max_open_prs: 5
 # Default aggressiveness (1-5)
 default_aggressiveness: 2
 
-# Default backend: "claude" or "ollama"
-default_backend: claude
-
-# Claude configuration (only used when backend is "claude")
+# Claude configuration (always used for planning, test fixing, and complex tasks)
 # Requires ANTHROPIC_API_KEY environment variable
 claude:
   model: claude-sonnet-4-6
   max_steps: 15
 
-# Ollama configuration (only used when backend is "ollama")
-# Requires Ollama running locally: https://ollama.com
+# Ollama configuration (optional — used for simple tasks when enabled)
+# Backend is selected by task complexity, not per-repo
 ollama:
+  enabled: false               # set to true to use local LLM for simple tasks
   host: http://localhost:11434
   model: qwen3-coder
-  num_ctx: 16384
+  num_ctx: 32768
   max_steps: 15
+  max_aggressiveness: 2        # only assign tasks at this level or below to Ollama
 
 # Planning agent configuration
 planning:
@@ -38,13 +37,10 @@ repos:
   - name: owner/repo-name
     aggressiveness: 2
     branch: main
-    backend: claude
     # install_command: "npm install"       # optional: run before tests
     # test_command: "npm test"             # optional: validate changes
 
-  # Example with Ollama backend
   # - name: owner/another-repo
   #   aggressiveness: 3
   #   branch: main
-  #   backend: ollama
   #   test_command: "go test ./..."

@@ -1,8 +1,8 @@
 import { createTools } from "./tools.js";
-import { getChatFn, estimateCost, logStep } from "./agent.js";
+import { selectBackend, getChatFn, maxStepsForBackend, estimateCost, logStep, TOOL_USAGE_HINT } from "./agent.js";
 import { runAgent, type ChatUsage } from "./loop.js";
 import { runTests } from "./github.js";
-import type { AnalysisResult, BacklogTask, Subtask, Backend, Config, RepoConfig } from "./types.js";
+import type { AnalysisResult, BacklogTask, Subtask, Config, RepoConfig } from "./types.js";
 
 const SUBTASK_PROMPT = `You are a code maintenance agent. Make exactly ONE change to a file.
 
@@ -22,19 +22,38 @@ const SUBTASK_PROMPT = `You are a code maintenance agent. Make exactly ONE chang
 3. Do NOT change anything else in the file
 4. Do NOT explore other files — focus only on this one change`;
 
-const FIX_PROMPT = `Your previous changes broke the tests. Here is the test output:
+const FIX_PROMPT = `You are a code maintenance agent. Your previous edit to **{{FILE}}** broke the build/tests.
+
+## What was changed
+
+File: {{FILE}}
+Change: {{WHAT}}
+
+## Build/test output
 
 {{TEST_OUTPUT}}
 
-Fix your changes so the tests pass. Use readFile to check the current state of files, then use editFile to fix the issues. Do not undo your maintenance changes — adjust them so the tests pass.`;
+## Instructions — you have only 10 steps, do NOT waste them
 
-function buildSubtaskPrompt(task: BacklogTask, subtask: Subtask): string {
-  return SUBTASK_PROMPT
+1. The error is almost certainly in **{{FILE}}** — read that file first
+2. Look at the error output above to find the exact line and error message
+3. Use editFile to fix the issue (typically: syntax error, missing import, wrong function signature)
+4. Do NOT read other files, run git commands, or explore the repo
+5. Do NOT undo the change — fix it so it compiles correctly`;
+
+function buildSubtaskPrompt(task: BacklogTask, subtask: Subtask, isOllama: boolean): string {
+  let prompt = SUBTASK_PROMPT
     .replace("{{TASK_TITLE}}", task.title)
     .replace("{{FILE}}", subtask.file)
     .replace("{{LINE_RANGE}}", `${subtask.line_range[0]}-${subtask.line_range[1]}`)
     .replace("{{WHAT}}", subtask.what)
     .replace("{{WHY}}", subtask.why);
+
+  if (isOllama) {
+    prompt += TOOL_USAGE_HINT;
+  }
+
+  return prompt;
 }
 
 export async function executeTask(
@@ -43,25 +62,24 @@ export async function executeTask(
   config: Config,
   repoConfig: RepoConfig,
 ): Promise<{ result: AnalysisResult; costUsd: number }> {
-  const backend = repoConfig.backend;
+  const backend = selectBackend(task.aggressiveness, config);
   const chatFn = getChatFn(backend, config);
-  const maxSteps =
-    backend === "ollama" ? config.ollama.max_steps : config.claude.max_steps;
+  const maxSteps = maxStepsForBackend(backend, config);
 
-  const totalUsage: ChatUsage = { inputTokens: 0, outputTokens: 0 };
+  const ollamaUsage: ChatUsage = { inputTokens: 0, outputTokens: 0 };
+  const claudeUsage: ChatUsage = { inputTokens: 0, outputTokens: 0 };
   const completedSubtasks: string[] = [];
   let testsFailing = false;
 
-  console.log(`[action] Task: "${task.title}" — ${task.subtasks.length} subtasks`);
+  console.log(`[action] Task: "${task.title}" — ${task.subtasks.length} subtasks (backend=${backend})`);
 
-  // Process each subtask with a fresh context
   for (let i = 0; i < task.subtasks.length; i++) {
     const subtask = task.subtasks[i]!;
     const label = `[action] [${i + 1}/${task.subtasks.length}]`;
     console.log(`${label} ${subtask.file} — ${subtask.what.slice(0, 80)}`);
 
     const tools = createTools(repoPath);
-    const systemPrompt = buildSubtaskPrompt(task, subtask);
+    const systemPrompt = buildSubtaskPrompt(task, subtask, backend === "ollama");
 
     try {
       const { usage, steps } = await runAgent({
@@ -73,24 +91,27 @@ export async function executeTask(
         onStepFinish: logStep,
       });
 
-      totalUsage.inputTokens += usage.inputTokens;
-      totalUsage.outputTokens += usage.outputTokens;
+      const usageBucket = backend === "ollama" ? ollamaUsage : claudeUsage;
+      usageBucket.inputTokens += usage.inputTokens;
+      usageBucket.outputTokens += usage.outputTokens;
       console.log(`${label} Done in ${steps} steps`);
     } catch (err) {
       console.error(`${label} Failed: ${(err as Error).message}`);
       continue;
     }
 
-    // Test after each subtask if test command is configured
+    // Test after each subtask
     if (repoConfig.test_command) {
       console.log(`${label} Running tests...`);
       let testResult = await runTests(repoPath, repoConfig.test_command);
 
       if (!testResult.passed) {
-        console.log(`${label} Tests failed, asking agent to fix...`);
-        const fixResult = await fixTestFailures(testResult.output, repoPath, config, backend);
-        totalUsage.inputTokens += fixResult.usage.inputTokens;
-        totalUsage.outputTokens += fixResult.usage.outputTokens;
+        // Always use Claude for test fixing — local models can't handle it
+        console.log(`${label} Tests failed, asking Claude to fix...`);
+        console.log(`${label} Test output (first 500 chars): ${testResult.output.slice(0, 500)}`);
+        const fixResult = await fixTestFailures(testResult.output, repoPath, config, subtask.file, subtask.what);
+        claudeUsage.inputTokens += fixResult.usage.inputTokens;
+        claudeUsage.outputTokens += fixResult.usage.outputTokens;
 
         testResult = await runTests(repoPath, repoConfig.test_command);
         if (!testResult.passed) {
@@ -109,7 +130,6 @@ export async function executeTask(
 
   console.log(`[action] Completed ${completedSubtasks.length}/${task.subtasks.length} subtasks${testsFailing ? " (stopped: tests failing)" : ""}`);
 
-  // Build result from completed subtasks
   const changes = completedSubtasks.join("\n");
   const result: AnalysisResult = completedSubtasks.length > 0 && !testsFailing
     ? {
@@ -125,18 +145,25 @@ export async function executeTask(
         pr_body: "",
       };
 
-  const costUsd = estimateCost(backend, totalUsage, config.claude.model);
+  const costUsd =
+    estimateCost("ollama", ollamaUsage) +
+    estimateCost("claude", claudeUsage, config.claude.model);
   return { result, costUsd };
 }
 
+// Always uses Claude — local models can't reliably fix test failures
 export async function fixTestFailures(
   testOutput: string,
   repoPath: string,
   config: Config,
-  backend: Backend,
+  file?: string,
+  change?: string,
 ): Promise<{ costUsd: number; usage: ChatUsage }> {
-  const prompt = FIX_PROMPT.replace("{{TEST_OUTPUT}}", testOutput.slice(0, 5000));
-  const chatFn = getChatFn(backend, config);
+  const prompt = FIX_PROMPT
+    .replace("{{TEST_OUTPUT}}", testOutput.slice(0, 5000))
+    .replace(/\{\{FILE\}\}/g, file ?? "the modified file")
+    .replace("{{WHAT}}", change ?? "a maintenance edit");
+  const chatFn = getChatFn("claude", config);
   const tools = createTools(repoPath);
 
   const { usage } = await runAgent({
@@ -148,5 +175,5 @@ export async function fixTestFailures(
     onStepFinish: logStep,
   });
 
-  return { costUsd: estimateCost(backend, usage, config.claude.model), usage };
+  return { costUsd: estimateCost("claude", usage, config.claude.model), usage };
 }

@@ -44,10 +44,12 @@ async function main() {
   console.log("=".repeat(60));
 
   const chatFn = createOllamaChatFn({
+    enabled: true,
     host: HOST,
     model: MODEL,
     num_ctx: 8192,
     max_steps: 5,
+    max_aggressiveness: 2,
   });
 
   try {

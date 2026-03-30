@@ -78,10 +78,14 @@ npx tsx src/test-ollama.ts # Test Ollama tool calling
 
 ## Status and known limitations
 
-This is a v0.3 — direct SDK integration replacing Vercel AI SDK. Known areas for improvement:
+Known areas for improvement:
 
-- No per-run cost tracking accumulation across multiple repos
+- **Partial subtask resilience**: If a task has 9 subtasks and the process dies after 8, all work is lost — the task gets marked as skipped/failed. Need per-subtask state tracking so progress is preserved across interruptions.
+- **Partial PR creation**: If 7/9 subtasks succeed but 1 fails tests, the whole task is marked as no changes. Should create a PR for the successful subtasks with a note about what was skipped.
+- **Transient error handling**: API overloaded (529) or network errors mark tasks as `failed` permanently. Should retry on transient errors instead.
 - `handleReviewComments` doesn't distinguish between already-addressed and new comments
 - No retry logic for transient GitHub API failures
-- The launchd plist PATH may need adjusting depending on the machine's setup
 - Local LLM tool calling reliability varies by model — qwen3-coder is the most reliable
+- Repos with DB-dependent tests (like mphotos) need special handling — fresh clones can't run integration tests without the DB
+- **Git auth in temp clones**: `gh repo clone` uses HTTPS but the cloned repo may not have the `gh` credential helper configured, causing password prompts on `git push`. Will fail for private repos. Fix: run `git config credential.helper '!gh auth git-credential'` in cloned repos, or clone via SSH instead.
+- **Private repo support**: Untested — the HTTPS clone + push flow likely breaks without credential helper setup in the temp clone

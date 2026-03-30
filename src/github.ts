@@ -69,9 +69,10 @@ export async function runTests(
     log(`Tests passed`);
     return { passed: true, output };
   } catch (err) {
-    const msg = (err as Error).message ?? String(err);
+    const e = err as Error & { stdout?: string; stderr?: string };
+    const output = ((e.stdout ?? "") + "\n" + (e.stderr ?? "")).trim() || e.message;
     log(`Tests failed`);
-    return { passed: false, output: msg.slice(0, 10000) };
+    return { passed: false, output: output.slice(0, 10000) };
   }
 }
 

@@ -113,7 +113,12 @@ export async function runAgent(options: AgentOptions): Promise<AgentResult> {
       toolCalls: response.toolCalls,
     });
 
-    if (response.toolCalls.length === 0) break;
+    if (response.toolCalls.length === 0) {
+      if (response.text) {
+        console.log(`[loop] Final response (${response.text.length} chars): ${response.text.slice(0, 300)}`);
+      }
+      break;
+    }
 
     const toolResults: { name: string; output: string }[] = [];
     for (const tc of response.toolCalls) {

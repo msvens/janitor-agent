@@ -80,8 +80,7 @@ async function handleReviewComments(state: State, config: Config, costBudget: { 
         const exec = promisify(execFile);
         await exec("git", ["checkout", pr.branch], { cwd: repoDir });
 
-        const repoBackend = config.repos.find((r) => r.name === pr.repo)?.backend ?? config.default_backend;
-        const costUsd = await addressComments(repoDir, comments, config, repoBackend);
+        const costUsd = await addressComments(repoDir, comments, config);
         costBudget.remaining -= costUsd;
 
         if (await hasChanges(repoDir)) {
@@ -214,7 +213,7 @@ async function runAction(): Promise<void> {
       continue;
     }
 
-    log(`Executing task "${task.title}" for ${repoConfig.name} (backend=${repoConfig.backend})`);
+    log(`Executing task "${task.title}" for ${repoConfig.name}`);
     await updateTaskStatus(repoConfig.name, task.id, "in_progress");
 
     const repoDir = await cloneRepo(repoConfig.name);

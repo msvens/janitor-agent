@@ -6,17 +6,18 @@ export interface ClaudeConfig {
 }
 
 export interface OllamaConfig {
+  enabled: boolean;
   host: string;
   model: string;
   num_ctx: number;
   max_steps: number;
+  max_aggressiveness: number;
 }
 
 export interface RepoConfig {
   name: string;
   aggressiveness: number;
   branch: string;
-  backend: Backend;
   install_command?: string;
   test_command?: string;
 }
@@ -31,7 +32,6 @@ export interface Config {
   max_cost_per_run: number;
   max_open_prs: number;
   default_aggressiveness: number;
-  default_backend: Backend;
   claude: ClaudeConfig;
   ollama: OllamaConfig;
   planning: PlanningConfig;
