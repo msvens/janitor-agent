@@ -45,12 +45,17 @@ Each repo is configured with an aggressiveness level (1-5):
 - Node.js 20+
 - [pnpm](https://pnpm.io/)
 - [GitHub CLI](https://cli.github.com/) (`gh`) — authenticated
-- For Claude backend: `ANTHROPIC_API_KEY` env var
-- For Ollama backend: [Ollama](https://ollama.com/) running locally
+- SSH key configured for GitHub (used for cloning and pushing)
+- `ANTHROPIC_API_KEY` env var (required — Claude is used for planning and complex tasks)
+- For Ollama backend (optional): [Ollama](https://ollama.com/) running locally
 
 ## Setup
 
 ```bash
+# Configure gh to use SSH (required for clone + push in temp repos)
+gh auth login
+gh config set git_protocol ssh
+
 pnpm install
 cp config.example.yaml config.yaml
 # Edit config.yaml with your repos
