@@ -8,7 +8,7 @@ import {
 import { resolve, relative, dirname } from "node:path";
 import { execFile, exec } from "node:child_process";
 import { promisify } from "node:util";
-import type { ToolDefinition } from "./loop.js";
+import type { ToolDefinition } from "./loop";
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);

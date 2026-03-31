@@ -1,8 +1,8 @@
-import { createTools } from "./tools.js";
-import { selectBackend, getChatFn, maxStepsForBackend, estimateCost, logStep, TOOL_USAGE_HINT } from "./agent.js";
-import { runAgent, type ChatUsage } from "./loop.js";
-import { runTests } from "./github.js";
-import type { AnalysisResult, BacklogTask, Subtask, Config, RepoConfig } from "./types.js";
+import { createTools } from "./tools";
+import { selectBackend, getChatFn, maxStepsForBackend, estimateCost, logStep, TOOL_USAGE_HINT } from "./agent";
+import { runAgent, type ChatUsage } from "./loop";
+import { runTests } from "./github";
+import type { AnalysisResult, BacklogTask, Subtask, Config, RepoConfig } from "./types";
 
 const SUBTASK_PROMPT = `You are a code maintenance agent. Make exactly ONE change to a file.
 
@@ -106,20 +106,29 @@ export async function executeTask(
       let testResult = await runTests(repoPath, repoConfig.test_command);
 
       if (!testResult.passed) {
-        // Always use Claude for test fixing — local models can't handle it
-        console.log(`${label} Tests failed, asking Claude to fix...`);
-        console.log(`${label} Test output (first 500 chars): ${testResult.output.slice(0, 500)}`);
-        const fixResult = await fixTestFailures(testResult.output, repoPath, config, subtask.file, subtask.what);
-        claudeUsage.inputTokens += fixResult.usage.inputTokens;
-        claudeUsage.outputTokens += fixResult.usage.outputTokens;
+        const maxFixAttempts = 3;
+        let fixed = false;
 
-        testResult = await runTests(repoPath, repoConfig.test_command);
-        if (!testResult.passed) {
-          console.error(`${label} Tests still failing after fix attempt — stopping`);
+        for (let attempt = 1; attempt <= maxFixAttempts; attempt++) {
+          console.log(`${label} Tests failed, asking Claude to fix (attempt ${attempt}/${maxFixAttempts})...`);
+          console.log(`${label} Test output (first 500 chars): ${testResult.output.slice(0, 500)}`);
+          const fixResult = await fixTestFailures(testResult.output, repoPath, config, subtask.file, subtask.what);
+          claudeUsage.inputTokens += fixResult.usage.inputTokens;
+          claudeUsage.outputTokens += fixResult.usage.outputTokens;
+
+          testResult = await runTests(repoPath, repoConfig.test_command);
+          if (testResult.passed) {
+            console.log(`${label} Tests pass after fix (attempt ${attempt})`);
+            fixed = true;
+            break;
+          }
+        }
+
+        if (!fixed) {
+          console.error(`${label} Tests still failing after ${maxFixAttempts} fix attempts — stopping`);
           testsFailing = true;
           break;
         }
-        console.log(`${label} Tests pass after fix`);
       } else {
         console.log(`${label} Tests pass`);
       }
@@ -131,12 +140,18 @@ export async function executeTask(
   console.log(`[action] Completed ${completedSubtasks.length}/${task.subtasks.length} subtasks${testsFailing ? " (stopped: tests failing)" : ""}`);
 
   const changes = completedSubtasks.join("\n");
-  const result: AnalysisResult = completedSubtasks.length > 0 && !testsFailing
+  const partial = completedSubtasks.length < task.subtasks.length;
+  const partialNote = partial
+    ? `\n\n> **Note**: ${completedSubtasks.length}/${task.subtasks.length} subtasks completed${testsFailing ? " (stopped due to test failure)" : ""}`
+    : "";
+
+  // Create PR even for partial completion — completed subtasks are still valuable
+  const result: AnalysisResult = completedSubtasks.length > 0
     ? {
         has_changes: true,
         summary: changes,
         pr_title: task.title,
-        pr_body: `## Janitor Agent - ${task.title}\n\n${task.description}\n\n### Changes\n\n${changes}\n\n---\n*Created by [janitor-agent](https://github.com/msvens/janitor-agent)*`,
+        pr_body: `## Janitor Agent - ${task.title}\n\n${task.description}\n\n### Changes\n\n${changes}${partialNote}\n\n---\n*Created by [janitor-agent](https://github.com/msvens/janitor-agent)*`,
       }
     : {
         has_changes: false,

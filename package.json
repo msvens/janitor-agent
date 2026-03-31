@@ -4,21 +4,39 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "plan": "tsx src/index.ts --plan",
-    "action": "tsx src/index.ts --action",
-    "action:dry-run": "tsx src/index.ts --action --dry-run",
-    "reconcile": "tsx src/index.ts --reconcile"
+    "plan": "tsx src/agent/index.ts --plan",
+    "action": "tsx src/agent/index.ts --action",
+    "action:dry-run": "tsx src/agent/index.ts --action --dry-run",
+    "reconcile": "tsx src/agent/index.ts --reconcile",
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx src/db/seed.ts",
+    "dev": "next dev -p 3003",
+    "build": "next build",
+    "start": "next start -p 3003"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "@heroicons/react": "^2.2.0",
+    "drizzle-orm": "^0.45.2",
+    "next": "^16.2.1",
     "ollama": "^0.6.3",
+    "pg": "^8.20.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "undici": "^7.24.6",
     "yaml": "^2.7.0",
     "zod": "^3.25.76",
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^22.0.0",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "drizzle-kit": "^0.31.10",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

@@ -1,6 +1,8 @@
 node_modules/
 dist/
+.next/
 state.json
+tsconfig.tsbuildinfo
 *.log
 *.err
 .DS_Store
