@@ -2,11 +2,25 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createReadOnlyTools, type StepTracker } from "./tools";
 import { LEVEL_DESCRIPTIONS, estimateCost, logStep, getChatFn } from "./agent";
-import { runAgent } from "./loop";
+import { runAgent, type StepInfo } from "./loop";
 import { PROMPTS_DIR } from "./paths";
 import type { BacklogTask, Config, RepoBacklog, RepoConfig } from "./types";
 
 const PLAN_PROMPT_PATH = resolve(PROMPTS_DIR, "plan.md");
+
+type LogFn = (msg: string) => void;
+
+function makeStepLogger(onLog: LogFn): (step: StepInfo) => void {
+  return (step) => {
+    for (const tc of step.toolCalls) {
+      const args = tc.arguments;
+      const summary = args
+        ? (args.path ?? args.pattern ?? args.command ?? JSON.stringify(args).slice(0, 80))
+        : "[no args]";
+      onLog(`Step ${step.stepNumber}: ${tc.name}(${summary})`);
+    }
+  };
+}
 
 function buildExistingTasksSection(backlog: RepoBacklog): string {
   const existing = backlog.tasks.filter(
@@ -65,7 +79,7 @@ function parsePlanResult(text: string): Omit<BacklogTask, "id" | "repo" | "statu
       return [];
     }
     return tasks.filter((t) => {
-      if (!t.title || !t.subtasks || !Array.isArray(t.subtasks)) {
+      if (!t.title || !t.changes || !Array.isArray(t.changes)) {
         console.warn(`[planner] Skipping invalid task: ${JSON.stringify(t).slice(0, 100)}`);
         return false;
       }
@@ -83,6 +97,7 @@ export async function planRepo(
   repoConfig: RepoConfig,
   config: Config,
   existingBacklog: RepoBacklog,
+  onLog: LogFn = console.log,
 ): Promise<{ tasks: BacklogTask[]; costUsd: number }> {
   const template = await readFile(PLAN_PROMPT_PATH, "utf-8");
   const systemPrompt = buildPlanPrompt(repoConfig.aggressiveness, template, existingBacklog);
@@ -90,6 +105,9 @@ export async function planRepo(
   const maxSteps = config.planning.max_steps;
   const stepTracker: StepTracker = { current: 0, max: maxSteps };
   const tools = createReadOnlyTools(repoPath, stepTracker);
+  const stepLogger = makeStepLogger(onLog);
+
+  onLog(`Planning ${repoConfig.name} (aggressiveness=${repoConfig.aggressiveness})`);
 
   const { text, usage, steps } = await runAgent({
     chatFn,
@@ -98,12 +116,12 @@ export async function planRepo(
       "Survey this repository and produce a backlog of maintenance tasks according to your instructions.",
     tools,
     maxSteps,
-    onStepFinish: logStep,
+    onStepFinish: stepLogger,
   });
 
-  console.log(`[planner] Done: ${steps} steps`);
+  onLog(`Planner done: ${steps} steps`);
   if (text) {
-    console.log(`[planner] Final text (first 500 chars): ${text.slice(0, 500)}`);
+    onLog(`Result: ${text.slice(0, 300)}`);
   }
 
   const rawTasks = parsePlanResult(text);
@@ -115,9 +133,10 @@ export async function planRepo(
     status: "pending" as const,
     created_at: new Date(now).toISOString(),
     aggressiveness: t.aggressiveness ?? repoConfig.aggressiveness,
-    subtasks: t.subtasks ?? [],
+    changes: t.changes ?? [],
   }));
 
+  onLog(`Found ${tasks.length} tasks`);
   const costUsd = estimateCost("claude", usage, config.claude.model);
   return { tasks, costUsd };
 }

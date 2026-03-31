@@ -2,7 +2,6 @@ import { loadConfig } from "../config";
 import { initBacklog, loadBacklog, addTasks } from "../backlog";
 import { planRepo } from "../planner";
 import { ensureWorkspace } from "../github";
-import type { StepInfo } from "../loop";
 
 export interface PlanJobOptions {
   repo?: string;
@@ -57,7 +56,7 @@ export async function runPlanJob(options: PlanJobOptions = {}): Promise<PlanJobR
     );
 
     try {
-      const { tasks, costUsd } = await planRepo(repoDir, repoConfig, config, backlog);
+      const { tasks, costUsd } = await planRepo(repoDir, repoConfig, config, backlog, log);
       costBudget.remaining -= costUsd;
       totalCost += costUsd;
       log(`Found ${tasks.length} tasks, cost: $${costUsd.toFixed(4)}`);

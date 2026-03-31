@@ -1,6 +1,7 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { initBacklog, loadBacklog, getNextTask, updateTaskStatus } from "../backlog";
+import { getTask } from "../../db/index";
 import { executeTask } from "../action";
 import {
   cloneRepo,
@@ -15,6 +16,7 @@ import {
 
 export interface ActionJobOptions {
   repo?: string;
+  taskId?: string;
   dryRun?: boolean;
   onLog?: (msg: string) => void;
   signal?: AbortSignal;
@@ -27,7 +29,7 @@ export interface ActionJobResult {
 }
 
 export async function runActionJob(options: ActionJobOptions = {}): Promise<ActionJobResult> {
-  const { repo: repoFilter, dryRun = false, onLog, signal } = options;
+  const { repo: repoFilter, taskId: targetTaskId, dryRun = false, onLog, signal } = options;
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
 
   const config = await loadConfig();
@@ -58,26 +60,30 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
       break;
     }
 
-    const backlog = await loadBacklog(repoConfig.name);
-    const task = getNextTask(backlog);
-    if (!task) {
-      log(`${repoConfig.name}: no pending tasks`);
+    // Use specific task if requested, otherwise pick next pending
+    const task = targetTaskId
+      ? await getTask(targetTaskId)
+      : getNextTask(await loadBacklog(repoConfig.name));
+    if (!task || (targetTaskId && task.repo !== repoConfig.name)) {
+      if (!targetTaskId) log(`${repoConfig.name}: no pending tasks`);
       continue;
     }
 
     log(`Executing task "${task.title}" for ${repoConfig.name}`);
     await updateTaskStatus(repoConfig.name, task.id, "in_progress");
 
+    log(`Cloning ${repoConfig.name}...`);
     const repoDir = await cloneRepo(repoConfig.name);
     try {
       const branchName = `janitor/${task.id}`;
       await createBranch(repoDir, branchName);
 
       if (repoConfig.install_command) {
+        log(`Installing dependencies...`);
         await installDeps(repoDir, repoConfig.install_command);
       }
 
-      const { result: taskResult, costUsd } = await executeTask(task, repoDir, config, repoConfig);
+      const { result: taskResult, costUsd } = await executeTask(task, repoDir, config, repoConfig, log);
       costBudget.remaining -= costUsd;
       result.costUsd += costUsd;
       result.taskTitle = task.title;
@@ -96,6 +102,7 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
         continue;
       }
 
+      log(`Creating PR: ${taskResult.pr_title}`);
       await ensureLabelExists(repoConfig.name);
       await commitAndPush(repoDir, branchName, taskResult.pr_title);
       const prNumber = await createPR(

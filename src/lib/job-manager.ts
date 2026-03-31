@@ -39,7 +39,7 @@ class JobManager extends EventEmitter {
     return this.jobLogs.get(jobId) ?? [];
   }
 
-  async startJob(type: JobType, repo?: string): Promise<string> {
+  async startJob(type: JobType, repo?: string, taskId?: string): Promise<string> {
     if (this.currentJob) {
       throw new Error(`Job ${this.currentJob.id} is already running`);
     }
@@ -50,7 +50,7 @@ class JobManager extends EventEmitter {
     this.jobLogs.set(jobId, []);
 
     // Record in DB
-    await createJob({ id: jobId, type, repo });
+    await createJob({ id: jobId, type, repo, taskId });
 
     const onLog = (msg: string) => {
       const logs = this.jobLogs.get(jobId);
@@ -66,7 +66,7 @@ class JobManager extends EventEmitter {
     };
 
     // Fire-and-forget
-    this.executeJob(jobId, type, repo, controller, onLog).catch(() => {});
+    this.executeJob(jobId, type, repo, taskId, controller, onLog).catch(() => {});
 
     return jobId;
   }
@@ -75,11 +75,12 @@ class JobManager extends EventEmitter {
     jobId: string,
     type: JobType,
     repo: string | undefined,
+    taskId: string | undefined,
     controller: AbortController,
     onLog: (msg: string) => void,
   ): Promise<void> {
     try {
-      const options = { repo, onLog, signal: controller.signal };
+      const options = { repo, taskId, onLog, signal: controller.signal };
       let costUsd = 0;
 
       switch (type) {

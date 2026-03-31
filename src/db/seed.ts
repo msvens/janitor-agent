@@ -7,7 +7,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { upsertRepo, addTask, addTrackedPR } from "./index";
 import { loadConfig } from "../agent/config";
-import type { RepoBacklog, State } from "../agent/types";
+import type { RepoBacklog, State, BacklogTask, TaskChange } from "../agent/types";
 
 async function seed() {
   console.log("Seeding database...");
@@ -35,9 +35,26 @@ async function seed() {
       console.log(`  Importing backlog: ${file}`);
       try {
         const raw = await readFile(path, "utf-8");
-        const backlog = JSON.parse(raw) as RepoBacklog;
+        const backlog = JSON.parse(raw) as any;
         for (const task of backlog.tasks) {
-          await addTask(task);
+          // Convert old subtasks format to changes format
+          const changes: TaskChange[] = (task.subtasks ?? task.changes ?? []).map((s: any) => ({
+            file: s.file,
+            lines: s.lines ?? (s.line_range ? `${s.line_range[0]}-${s.line_range[1]}` : ""),
+            what: s.what,
+          }));
+          const converted: BacklogTask = {
+            id: task.id,
+            repo: task.repo,
+            title: task.title,
+            description: task.description ?? "",
+            changes,
+            aggressiveness: task.aggressiveness ?? 2,
+            status: task.status ?? "pending",
+            created_at: task.created_at ?? new Date().toISOString(),
+            pr_number: task.pr_number,
+          };
+          await addTask(converted);
         }
       } catch (err) {
         console.warn(`  Failed to import ${file}: ${(err as Error).message}`);

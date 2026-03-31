@@ -13,7 +13,7 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { type, repo } = body as { type: JobType; repo?: string };
+  const { type, repo, taskId } = body as { type: JobType; repo?: string; taskId?: string };
 
   if (!["plan", "action", "reconcile"].includes(type)) {
     return NextResponse.json({ error: "Invalid job type" }, { status: 400 });
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const jobId = await jobManager.startJob(type, repo);
+    const jobId = await jobManager.startJob(type, repo, taskId);
     return NextResponse.json({ jobId }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });

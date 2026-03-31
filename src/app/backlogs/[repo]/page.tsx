@@ -1,5 +1,6 @@
 import { getTasksForRepo } from "@/db/index";
 import { TaskStatusSelect } from "@/components/backlogs/task-status-select";
+import { RunTaskButton } from "@/components/backlogs/run-task-button";
 import { RunButton } from "@/components/jobs/run-button";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,9 @@ export default async function RepoBacklogPage({
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-medium">{task.title}</h3>
               <div className="flex items-center gap-2">
+                {task.status === "pending" && (
+                  <RunTaskButton taskId={task.id} repo={task.repo} />
+                )}
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
                   Level {task.aggressiveness}
                 </span>
@@ -46,19 +50,19 @@ export default async function RepoBacklogPage({
               </div>
             </div>
             <p className="text-sm text-gray-400 mb-3">{task.description}</p>
-            {task.subtasks.length > 0 && (
+            {task.changes.length > 0 && (
               <details className="text-sm">
                 <summary className="text-gray-500 cursor-pointer hover:text-gray-300">
-                  {task.subtasks.length} subtasks
+                  {task.changes.length} file changes
                 </summary>
                 <ul className="mt-2 space-y-1 ml-4">
-                  {task.subtasks.map((st, i) => (
+                  {task.changes.map((c, i) => (
                     <li key={i} className="text-gray-400">
-                      <code className="text-gray-300 text-xs">{st.file}</code>
+                      <code className="text-gray-300 text-xs">{c.file}</code>
                       <span className="text-gray-600 mx-1">:</span>
-                      <span className="text-gray-500 text-xs">{st.line_range[0]}-{st.line_range[1]}</span>
+                      <span className="text-gray-500 text-xs">{c.lines}</span>
                       <span className="text-gray-600 mx-1">—</span>
-                      {st.what}
+                      {c.what}
                     </li>
                   ))}
                 </ul>
