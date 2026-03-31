@@ -18,6 +18,7 @@ export const tasks = pgTable("tasks", {
   repo: text("repo").notNull().references(() => repos.name),
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
+  changes: text("changes").notNull().default("[]"),  // JSON-encoded TaskChange[]
   aggressiveness: integer("aggressiveness").notNull().default(2),
   status: text("status").notNull().default("pending"),
   prNumber: integer("pr_number"),
@@ -26,21 +27,6 @@ export const tasks = pgTable("tasks", {
 }, (table) => [
   index("idx_tasks_repo_status").on(table.repo, table.status),
   index("idx_tasks_status").on(table.status),
-]);
-
-// --- Subtasks ---
-
-export const subtasks = pgTable("subtasks", {
-  id: serial("id").primaryKey(),
-  taskId: text("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
-  file: text("file").notNull(),
-  lineStart: integer("line_start").notNull(),
-  lineEnd: integer("line_end").notNull(),
-  what: text("what").notNull(),
-  why: text("why").notNull(),
-  sortOrder: integer("sort_order").notNull().default(0),
-}, (table) => [
-  index("idx_subtasks_task").on(table.taskId),
 ]);
 
 // --- Tracked PRs ---

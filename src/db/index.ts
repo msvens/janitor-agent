@@ -8,7 +8,7 @@ import type {
   State,
   TrackedPR,
   TaskStatus,
-  Subtask,
+  TaskChange,
 } from "../agent/types";
 
 // --- Connection ---
@@ -81,7 +81,6 @@ export async function addTask(task: BacklogTask) {
   const db = getDb();
   const now = new Date().toISOString();
 
-  // Check if task already exists (dedup)
   const existing = await db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id));
   if (existing.length > 0) return;
 
@@ -91,26 +90,13 @@ export async function addTask(task: BacklogTask) {
       repo: task.repo,
       title: task.title,
       description: task.description,
+      changes: JSON.stringify(task.changes),
       aggressiveness: task.aggressiveness,
       status: task.status,
       prNumber: task.pr_number ?? null,
       createdAt: task.created_at,
       updatedAt: now,
     });
-
-  for (let i = 0; i < task.subtasks.length; i++) {
-    const st = task.subtasks[i]!;
-    await db.insert(schema.subtasks)
-      .values({
-        taskId: task.id,
-        file: st.file,
-        lineStart: st.line_range[0],
-        lineEnd: st.line_range[1],
-        what: st.what,
-        why: st.why,
-        sortOrder: i,
-      });
-  }
 }
 
 export async function getTasksForRepo(
@@ -129,11 +115,7 @@ export async function getTasksForRepo(
     .where(conditions)
     .orderBy(asc(schema.tasks.aggressiveness));
 
-  const tasks: BacklogTask[] = [];
-  for (const row of rows) {
-    tasks.push(await rowToTask(row));
-  }
-  return tasks;
+  return rows.map(rowToTask);
 }
 
 export async function getTask(taskId: string): Promise<BacklogTask | null> {
@@ -195,33 +177,24 @@ export async function deleteTask(taskId: string) {
   await db.delete(schema.tasks).where(eq(schema.tasks.id, taskId));
 }
 
-async function getSubtasksForTask(taskId: string): Promise<Subtask[]> {
-  const db = getDb();
-  const rows = await db
-    .select()
-    .from(schema.subtasks)
-    .where(eq(schema.subtasks.taskId, taskId))
-    .orderBy(asc(schema.subtasks.sortOrder));
+function rowToTask(row: typeof schema.tasks.$inferSelect): BacklogTask {
+  let changes: TaskChange[] = [];
+  try {
+    changes = JSON.parse(row.changes) as TaskChange[];
+  } catch {
+    changes = [];
+  }
 
-  return rows.map((row) => ({
-    file: row.file,
-    line_range: [row.lineStart, row.lineEnd] as [number, number],
-    what: row.what,
-    why: row.why,
-  }));
-}
-
-async function rowToTask(row: typeof schema.tasks.$inferSelect): Promise<BacklogTask> {
   return {
     id: row.id,
     repo: row.repo,
     title: row.title,
     description: row.description,
+    changes,
     aggressiveness: row.aggressiveness,
     status: row.status as TaskStatus,
     pr_number: row.prNumber ?? undefined,
     created_at: row.createdAt,
-    subtasks: await getSubtasksForTask(row.id),
   };
 }
 
@@ -393,10 +366,8 @@ export async function getJobSteps(jobId: string) {
     .orderBy(asc(schema.jobSteps.stepNumber));
 }
 
-// --- Init (create tables via drizzle-kit push) ---
+// --- Init ---
 
 export async function initDb() {
-  // Tables are created via drizzle-kit push (see package.json db:push script)
-  // This just ensures the connection works
   getDb();
 }

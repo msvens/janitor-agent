@@ -68,11 +68,10 @@ export interface AnalysisResult {
 
 export type TaskStatus = "pending" | "in_progress" | "completed" | "failed" | "skipped";
 
-export interface Subtask {
+export interface TaskChange {
   file: string;
-  line_range: [number, number];
+  lines: string;
   what: string;
-  why: string;
 }
 
 export interface BacklogTask {
@@ -80,7 +79,7 @@ export interface BacklogTask {
   repo: string;
   title: string;
   description: string;
-  subtasks: Subtask[];
+  changes: TaskChange[];
   aggressiveness: number;
   status: TaskStatus;
   created_at: string;
