@@ -1,0 +1,86 @@
+import { getTasksForRepo } from "@/db/index";
+import { TaskStatusSelect } from "@/components/backlogs/task-status-select";
+import { RunButton } from "@/components/jobs/run-button";
+
+export const dynamic = "force-dynamic";
+
+export default async function RepoBacklogPage({
+  params,
+}: {
+  params: Promise<{ repo: string }>;
+}) {
+  const { repo } = await params;
+  const repoName = decodeURIComponent(repo).replace("-", "/");
+  const tasks = await getTasksForRepo(repoName);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-bold">{repoName}</h2>
+          <p className="text-gray-500">{tasks.length} tasks</p>
+        </div>
+        <div className="flex gap-2">
+          <RunButton type="plan" repo={repoName} label="Plan" className="bg-purple-600 hover:bg-purple-500 text-white" />
+          <RunButton type="action" repo={repoName} label="Run Action" />
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {tasks.map((task) => (
+          <div
+            key={task.id}
+            className="bg-gray-900 border border-gray-800 rounded-lg p-4"
+          >
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-medium">{task.title}</h3>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
+                  Level {task.aggressiveness}
+                </span>
+                <TaskStatusSelect
+                  taskId={task.id}
+                  repo={task.repo}
+                  currentStatus={task.status}
+                />
+              </div>
+            </div>
+            <p className="text-sm text-gray-400 mb-3">{task.description}</p>
+            {task.subtasks.length > 0 && (
+              <details className="text-sm">
+                <summary className="text-gray-500 cursor-pointer hover:text-gray-300">
+                  {task.subtasks.length} subtasks
+                </summary>
+                <ul className="mt-2 space-y-1 ml-4">
+                  {task.subtasks.map((st, i) => (
+                    <li key={i} className="text-gray-400">
+                      <code className="text-gray-300 text-xs">{st.file}</code>
+                      <span className="text-gray-600 mx-1">:</span>
+                      <span className="text-gray-500 text-xs">{st.line_range[0]}-{st.line_range[1]}</span>
+                      <span className="text-gray-600 mx-1">—</span>
+                      {st.what}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {task.pr_number && (
+              <a
+                href={`https://github.com/${task.repo}/pull/${task.pr_number}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-blue-400 hover:underline mt-2 inline-block"
+              >
+                PR #{task.pr_number}
+              </a>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {tasks.length === 0 && (
+        <p className="text-gray-500">No tasks. Click "Plan" to generate tasks for this repo.</p>
+      )}
+    </div>
+  );
+}

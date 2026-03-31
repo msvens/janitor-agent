@@ -1,7 +1,7 @@
 import { Ollama } from "ollama";
 import { Agent } from "undici";
-import type { ChatFn, ChatResponse, ToolCall, ToolSchema } from "../loop.js";
-import type { OllamaConfig } from "../types.js";
+import type { ChatFn, ChatResponse, ToolCall, ToolSchema } from "../loop";
+import type { OllamaConfig } from "../types";
 
 // Custom fetch with extended timeouts to handle slow local models
 // The default undici headersTimeout (~300s) is too short for large models

@@ -1,8 +1,8 @@
-import { createClaudeChatFn } from "./backends/claude.js";
-import { createOllamaChatFn } from "./backends/ollama.js";
-import { runAgent, type ChatFn, type ChatUsage, type StepInfo } from "./loop.js";
-import { createTools } from "./tools.js";
-import type { Backend, Config } from "./types.js";
+import { createClaudeChatFn } from "./backends/claude";
+import { createOllamaChatFn } from "./backends/ollama";
+import { runAgent, type ChatFn, type ChatUsage, type StepInfo } from "./loop";
+import { createTools } from "./tools";
+import type { Backend, Config } from "./types";
 
 export const LEVEL_DESCRIPTIONS: Record<number, string> = {
   1: `**Minimal**: Only dependency updates.

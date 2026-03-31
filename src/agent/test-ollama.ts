@@ -7,8 +7,8 @@
  */
 
 import { z } from "zod";
-import { createOllamaChatFn } from "./backends/ollama.js";
-import { runAgent, type ToolDefinition } from "./loop.js";
+import { createOllamaChatFn } from "./backends/ollama";
+import { runAgent, type ToolDefinition } from "./loop";
 
 const HOST = process.env.OLLAMA_HOST ?? "http://localhost:11434";
 const MODEL = process.env.OLLAMA_MODEL ?? "qwen3-coder";

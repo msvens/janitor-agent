@@ -1,10 +1,9 @@
-import { readFile } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { readFile, writeFile, rename } from "node:fs/promises";
+import { join } from "node:path";
 import { homedir } from "node:os";
-import { parse } from "yaml";
-import type { Config } from "./types.js";
-
-const CONFIG_PATH = resolve(import.meta.dirname, "..", "config.yaml");
+import { parse, stringify } from "yaml";
+import { CONFIG_PATH } from "./paths";
+import type { Config } from "./types";
 
 export async function loadConfig(): Promise<Config> {
   const raw = await readFile(CONFIG_PATH, "utf-8");
@@ -62,4 +61,41 @@ export async function loadConfig(): Promise<Config> {
   }
 
   return config;
+}
+
+export async function saveConfig(config: Config): Promise<void> {
+  const yamlObj = {
+    max_cost_per_run: config.max_cost_per_run,
+    max_open_prs: config.max_open_prs,
+    default_aggressiveness: config.default_aggressiveness,
+    claude: {
+      model: config.claude.model,
+      max_steps: config.claude.max_steps,
+    },
+    ollama: {
+      enabled: config.ollama.enabled,
+      host: config.ollama.host,
+      model: config.ollama.model,
+      num_ctx: config.ollama.num_ctx,
+      max_steps: config.ollama.max_steps,
+      max_aggressiveness: config.ollama.max_aggressiveness,
+    },
+    planning: {
+      max_steps: config.planning.max_steps,
+      workspace_dir: config.planning.workspace_dir.replace(homedir(), "~"),
+      backlog_dir: config.planning.backlog_dir.replace(homedir(), "~"),
+    },
+    repos: config.repos.map((r) => ({
+      name: r.name,
+      aggressiveness: r.aggressiveness,
+      branch: r.branch,
+      ...(r.install_command ? { install_command: r.install_command } : {}),
+      ...(r.test_command ? { test_command: r.test_command } : {}),
+    })),
+  };
+
+  const yamlStr = "# Janitor Agent Configuration\n\n" + stringify(yamlObj);
+  const tmp = CONFIG_PATH + ".tmp";
+  await writeFile(tmp, yamlStr, "utf-8");
+  await rename(tmp, CONFIG_PATH);
 }

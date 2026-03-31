@@ -1,11 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createReadOnlyTools, type StepTracker } from "./tools.js";
-import { LEVEL_DESCRIPTIONS, estimateCost, logStep, getChatFn } from "./agent.js";
-import { runAgent } from "./loop.js";
-import type { BacklogTask, Config, RepoBacklog, RepoConfig } from "./types.js";
+import { createReadOnlyTools, type StepTracker } from "./tools";
+import { LEVEL_DESCRIPTIONS, estimateCost, logStep, getChatFn } from "./agent";
+import { runAgent } from "./loop";
+import { PROMPTS_DIR } from "./paths";
+import type { BacklogTask, Config, RepoBacklog, RepoConfig } from "./types";
 
-const PLAN_PROMPT_PATH = resolve(import.meta.dirname, "..", "prompts", "plan.md");
+const PLAN_PROMPT_PATH = resolve(PROMPTS_DIR, "plan.md");
 
 function buildExistingTasksSection(backlog: RepoBacklog): string {
   const existing = backlog.tasks.filter(

@@ -5,7 +5,7 @@ import type {
   Message,
   ToolCall,
   ToolSchema,
-} from "../loop.js";
+} from "../loop";
 
 export function createClaudeChatFn(model: string): ChatFn {
   // Requires ANTHROPIC_API_KEY env var (subscription OAuth tokens are not supported by the API)
