@@ -1,163 +1,183 @@
 # Janitor Agent
 
-An autonomous code maintenance agent that scans GitHub repositories, identifies maintenance tasks, and creates PRs with fixes. Supports both cloud (Anthropic Claude) and local (Ollama) LLM backends.
+An autonomous code maintenance agent with a web UI. Scans GitHub repositories, identifies maintenance tasks, and creates PRs with fixes. Supports both cloud (Anthropic Claude) and local (Ollama) LLM backends.
 
 ## How it works
 
-The agent uses a **two-phase architecture**:
+The agent uses a **two-phase architecture**, controlled through a web dashboard:
 
 **Phase 1 — Planning** (read-only):
-- Scans a repo with read-only tools (glob, grep, readFile)
-- Produces a structured JSON backlog of up to 5 maintenance tasks
-- Each task has file-level subtasks with exact locations and rationale
-- Runs with Claude (best results for surveying codebases)
+- Claude scans a repo with read-only tools (glob, grep, readFile)
+- Produces a structured backlog of up to 5 maintenance tasks
+- Each task includes specific file changes with line numbers and rationale
+- Aggressiveness level controls task scope (1 = trivial, 5 = significant)
 
 **Phase 2 — Action** (read/write):
-- Picks the next pending task from the backlog
-- Reads files, makes edits, runs configured tests
-- If tests fail, feeds output back to the agent for retry (up to 2 attempts)
+- Picks a task from the backlog (or run a specific task from the UI)
+- Reads files, makes all changes in one session, runs tests
+- Up to 3 fix attempts if tests fail (always uses Claude for fixes)
 - Creates a PR if changes pass tests
-- Works with both Claude and Ollama backends
 
 All PRs are labeled `janitor-agent` for easy filtering.
 
 ## Backends
 
-| Backend | Provider | Cost | Best for |
+Backend is selected automatically by task complexity:
+
+| Backend | Provider | Cost | Used for |
 |---------|----------|------|----------|
-| `claude` | Anthropic API | Pay per token | Complex analysis, planning |
-| `ollama` | Local Ollama | Free | Simple tasks, privacy-sensitive repos |
+| `claude` | Anthropic API | Pay per token | Planning, complex tasks, test fixing |
+| `ollama` | Local Ollama | Free | Simple tasks (when enabled, ≤ max aggressiveness) |
 
 ## Aggressiveness levels
 
-Each repo is configured with an aggressiveness level (1-5):
+Controls both the type of changes AND the task size:
 
-| Level | Name | Scope |
-|-------|------|-------|
-| 1 | Minimal | Dependency updates only |
-| 2 | Conservative | + unused imports, dead code, lint fixes |
-| 3 | Moderate | + minor refactors, basic tests |
-| 4 | Active | + error handling, modern syntax, integration tests |
-| 5 | Aggressive | + type safety, structural suggestions, comprehensive tests |
+| Level | Scope | PR size | Examples |
+|-------|-------|---------|----------|
+| 1 | Single change, 1 file | Trivial | Remove one unused import, fix a typo |
+| 2 | Few changes, 1-2 files | Small | Remove dead code block, fix a lint issue |
+| 3 | Related changes, 2-5 files | Medium | Replace debug prints with logger |
+| 4 | Cross-cutting, many files | Large | Add error handling pattern |
+| 5 | Architectural | Significant | Refactor module structure |
 
 ## Prerequisites
 
 - Node.js 20+
 - [pnpm](https://pnpm.io/)
-- [GitHub CLI](https://cli.github.com/) (`gh`) — authenticated
-- SSH key configured for GitHub (used for cloning and pushing)
-- `ANTHROPIC_API_KEY` env var (required — Claude is used for planning and complex tasks)
-- For Ollama backend (optional): [Ollama](https://ollama.com/) running locally
+- PostgreSQL
+- [GitHub CLI](https://cli.github.com/) (`gh`)
+- SSH key configured for GitHub
+
+## Environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `ANTHROPIC_API_KEY` | Yes | Claude API key |
+| `GH_TOKEN` | Server only | GitHub token for `gh` CLI (not needed locally if `gh auth login` is done) |
+| `DATABASE_URL` | No | PostgreSQL connection (default: `postgresql://localhost:5432/janitor`) |
+| `JANITOR_CONFIG` | No | Custom config file path |
 
 ## Setup
 
 ```bash
-# Configure gh to use SSH (required for clone + push in temp repos)
+# 1. Clone and install
+pnpm install
+
+# 2. Configure GitHub CLI
 gh auth login
 gh config set git_protocol ssh
 
-pnpm install
-cp config.example.yaml config.yaml
-# Edit config.yaml with your repos
+# 3. Create database
+createdb janitor
+
+# 4. Create config file
+cp config.example.yaml ~/.janitor/config.yaml
+# Edit with your database URL, Claude model, Ollama settings
+
+# 5. Push database schema
+pnpm run db:push
+
+# 6. Start the web UI
+pnpm dev
 ```
 
-### Ollama setup
+Open `http://localhost:3003` to access the dashboard.
 
-If using the Ollama backend:
+### Config file
+
+The config file (`config.yaml`) contains bootstrap settings only — connection info that requires a restart to change:
+
+```yaml
+database_url: postgresql://localhost:5432/janitor
+port: 3003
+
+claude:
+  model: claude-sonnet-4-6
+
+ollama:
+  host: http://localhost:11434
+  model: qwen3-coder
+```
+
+Config file search order:
+1. `JANITOR_CONFIG` environment variable
+2. `~/.janitor/config.yaml`
+3. `/etc/janitor/config.yaml`
+4. `./config.yaml`
+
+All runtime settings (repos, cost limits, aggressiveness, step limits, Ollama toggle) are managed through the web UI and stored in PostgreSQL.
+
+### Ollama setup (optional)
 
 ```bash
 brew install ollama
-ollama serve                 # start server (leave running)
-ollama pull qwen3-coder      # download a model
+ollama serve
+ollama pull qwen3-coder
 ```
 
-## Usage
+Enable Ollama in the web UI settings page. It will be used for tasks at or below the configured max aggressiveness level.
 
-### Planning — survey repos and build backlog
+## Web UI
 
-```bash
-pnpm run plan                              # plan all repos
-pnpm run plan -- --repo owner/repo-name    # plan a specific repo
-```
+The dashboard at `localhost:3003` provides:
 
-### Action — execute tasks from backlog
-
-```bash
-pnpm run action                              # execute next task for all repos
-pnpm run action -- --repo owner/repo-name    # execute for a specific repo
-pnpm run action:dry-run -- --repo owner/repo # dry run (no PR created)
-```
-
-### Legacy — single-pass analyze + PR
-
-```bash
-pnpm start           # full run
-pnpm run dry-run     # analyze without creating PRs
-```
-
-### Test backends
-
-```bash
-npx tsx src/test-ollama.ts   # test Ollama tool calling
-npx tsx src/test-claude.ts   # test Claude API connectivity
-```
-
-### Scheduled via launchd (macOS)
-
-```bash
-cp com.msvens.janitor-agent.plist ~/Library/LaunchAgents/
-# Edit the plist to match your paths
-launchctl load ~/Library/LaunchAgents/com.msvens.janitor-agent.plist
-```
+- **Dashboard** — repo cards with task counts, quick action buttons
+- **Backlogs** — task list per repo, change status, run specific tasks
+- **PRs** — tracked open PRs with GitHub links
+- **Jobs** — live SSE streaming of agent progress, abort running jobs
+- **Config** — edit settings, manage repos, toggle Ollama
 
 ## Safety controls
 
-- **`max_cost_per_run`** — USD budget limit per run (default $0.50)
-- **`max_open_prs`** — stops creating PRs when limit reached
-- **Step limits** — configurable max tool calls per agent run
-- **Tool sandboxing** — all tools operate in cloned/workspace directories with path traversal protection
-- **Test loop** — runs configured test commands after edits; retries on failure before creating PR
-- **Dry run mode** — `--dry-run` flag to test without creating PRs
+- **Cost budget** — configurable per-run USD limit (default $0.50)
+- **PR limit** — max open PRs before stopping (default 5)
+- **Step limits** — max tool calls per agent run
+- **Tool sandboxing** — all tools operate in cloned temp directories with path traversal protection
+- **Test loop** — runs configured test commands after edits; up to 3 fix attempts
+- **Confirmation dialogs** — all destructive actions require confirmation in the UI
 
 ## Architecture
 
 ```
 src/
-  index.ts              Orchestrator — plan/action/legacy modes
-  loop.ts               Agent loop + abstraction types (ChatFn, ToolDefinition, runAgent)
-  backends/
-    claude.ts           Claude SDK integration (streaming)
-    ollama.ts           Ollama SDK integration (streaming)
-  agent.ts              analyzeRepo, addressComments, getChatFn, cost estimation
-  action.ts             Task execution + test failure fixing
-  planner.ts            Backlog planning agent
-  tools.ts              Tool definitions (readFile, writeFile, editFile, glob, grep, bash)
-  backlog.ts            Per-repo backlog persistence + task lifecycle
-  github.ts             Git/GitHub operations via gh CLI
-  config.ts             Config loading + validation
-  state.ts              Runtime state (open PRs, repo history)
-  types.ts              Shared TypeScript interfaces
+  app/                    Next.js App Router (pages + API routes)
+  components/             React components (dashboard, backlogs, jobs, config)
+  lib/
+    job-manager.ts        Singleton job orchestrator (SSE, abort support)
+    init.ts               DB initialization from config
+  agent/
+    loop.ts               Agent loop (ChatFn, ToolDefinition, runAgent)
+    agent.ts              Backend selection, cost estimation, logging
+    action.ts             Task execution (single session per task)
+    planner.ts            Backlog planning agent
+    tools.ts              Tool definitions (readFile, writeFile, editFile, glob, grep, bash)
+    config.ts             Bootstrap config loader (YAML)
+    github.ts             Git/GitHub operations via gh CLI
+    backlog.ts            Backlog queries (thin DB wrapper)
+    state.ts              PR tracking (thin DB wrapper)
+    backends/
+      claude.ts           @anthropic-ai/sdk with streaming
+      ollama.ts           Ollama client with streaming + extended timeouts
+    jobs/
+      plan-job.ts         Planning orchestration
+      action-job.ts       Action orchestration
+      reconcile-job.ts    PR reconciliation + comment handling
+  db/
+    schema.ts             Drizzle ORM schema (PostgreSQL)
+    index.ts              Database queries
+    seed.ts               Import from legacy JSON backlogs
 prompts/
-  analyze.md            Single-issue analysis prompt
-  plan.md               Backlog planning prompt
-  action.md             Task execution prompt
-config.example.yaml     Example configuration
+  plan.md                 Planning agent prompt
+config.example.yaml       Bootstrap config template
 ```
 
 ## Tech stack
 
-- **TypeScript** (ESM) with `tsx` for direct execution
+- **Next.js 16** (App Router) + **React 19** + **Tailwind CSS 4**
+- **PostgreSQL** via **Drizzle ORM**
 - **@anthropic-ai/sdk** — Claude API with streaming
-- **ollama** — Ollama client with streaming (prevents timeout issues)
+- **ollama** — local LLM client with streaming
 - **zod** + **zod-to-json-schema** — tool parameter validation
-- **gh CLI** — all GitHub operations (clone, branch, PR, labels)
-- **yaml** — config parsing
-
-## State
-
-Runtime state is stored in `state.json` (gitignored). It tracks:
-- Open PRs created by the agent
-- Per-repo analysis history
-- Last run timestamp
-
-Backlogs are stored in `~/.janitor/backlog/` (configurable). Delete `state.json` to reset runtime state.
+- **gh CLI** — GitHub operations (clone, PR, labels, status)
+- **SSE** — real-time job progress streaming
