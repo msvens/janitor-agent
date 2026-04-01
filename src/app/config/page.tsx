@@ -22,6 +22,8 @@ interface Settings {
   claude_max_steps: number;
   planning_max_steps: number;
   workspace_dir: string;
+  autopilot_enabled: boolean;
+  autopilot_interval_minutes: number;
 }
 
 interface BootstrapConfig {
@@ -188,6 +190,19 @@ export default function ConfigPage() {
               onChange={(v) => setSettings({ ...settings, default_aggressiveness: parseInt(v) || 2 })}
             />
           </div>
+
+          <h4 className="text-sm font-medium text-gray-300 mb-3">Auto-pilot</h4>
+          <div className="grid grid-cols-2 gap-4 mb-4">
+            <Input
+              label="Cycle interval (minutes)"
+              type="number"
+              value={settings.autopilot_interval_minutes}
+              onChange={(v) => setSettings({ ...settings, autopilot_interval_minutes: parseInt(v) || 10 })}
+            />
+          </div>
+          <p className="text-xs text-gray-500 mb-4">
+            Auto-pilot runs: reconcile → action, repeating every N minutes. Start/stop from the banner above. Max 1 open PR per repo.
+          </p>
 
           <h4 className="text-sm font-medium text-gray-300 mb-3">Claude</h4>
           <div className="grid grid-cols-2 gap-4 mb-4">

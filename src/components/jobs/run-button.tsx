@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { JobType } from "@/lib/job-manager";
 
@@ -23,8 +23,22 @@ export function RunButton({
 }) {
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch("/api/autopilot");
+        const data = await res.json();
+        setBusy(data.jobRunning);
+      } catch { /* ignore */ }
+    };
+    check();
+    const interval = setInterval(check, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   function handleClick() {
     setError(null);
@@ -58,10 +72,10 @@ export function RunButton({
     <div className="relative">
       <button
         onClick={handleClick}
-        disabled={loading}
+        disabled={loading || busy}
         className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors disabled:opacity-50 ${className || "bg-blue-600 hover:bg-blue-500 text-white"}`}
       >
-        {loading ? "Starting..." : label}
+        {loading ? "Starting..." : busy ? "Job running..." : label}
       </button>
       {error && <p className="text-xs text-red-400 mt-1">{error}</p>}
 

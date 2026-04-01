@@ -1,8 +1,9 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { loadBacklog, getNextTask, updateTaskStatus } from "../backlog";
-import { getTask, getSettings, getAllRepoConfigs, getRepoConfig } from "../../db/index";
+import { getTask, getSettings, getAllRepoConfigs } from "../../db/index";
 import { executeTask } from "../action";
+import { runReconcileJob } from "./reconcile-job";
 import {
   cloneRepo,
   cleanupRepo,
@@ -12,6 +13,7 @@ import {
   createPR,
   ensureLabelExists,
   installDeps,
+  deleteRemoteBranch,
 } from "../github";
 
 export interface ActionJobOptions {
@@ -31,6 +33,10 @@ export interface ActionJobResult {
 export async function runActionJob(options: ActionJobOptions = {}): Promise<ActionJobResult> {
   const { repo: repoFilter, taskId: targetTaskId, dryRun = false, onLog, signal } = options;
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
+
+  // Always reconcile first to catch merged/closed PRs
+  log("Reconciling PRs before action...");
+  await runReconcileJob({ onLog: log, signal });
 
   const config = await loadConfig();
   const settings = await getSettings();
@@ -56,8 +62,15 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
     }
 
     if (state.open_prs.length >= settings.max_open_prs) {
-      log(`At PR limit (${state.open_prs.length}/${settings.max_open_prs}), stopping`);
+      log(`At global PR limit (${state.open_prs.length}/${settings.max_open_prs}), stopping`);
       break;
+    }
+
+    // Max 1 open PR per repo — skip repos that already have one
+    const repoHasOpenPR = state.open_prs.some((pr) => pr.repo === repoConfig.name);
+    if (repoHasOpenPR) {
+      log(`${repoConfig.name}: already has an open PR, skipping`);
+      continue;
     }
 
     const task = targetTaskId
@@ -72,9 +85,9 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
     await updateTaskStatus(repoConfig.name, task.id, "in_progress");
 
     log(`Cloning ${repoConfig.name}...`);
+    const branchName = `janitor/${task.id}`;
     const repoDir = await cloneRepo(repoConfig.name);
     try {
-      const branchName = `janitor/${task.id}`;
       await createBranch(repoDir, branchName);
 
       if (repoConfig.install_command) {
@@ -91,6 +104,7 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
       if (!taskResult.has_changes || !(await hasChanges(repoDir))) {
         log(`No changes produced for task "${task.title}", marking skipped`);
         await updateTaskStatus(repoConfig.name, task.id, "skipped");
+        await deleteRemoteBranch(repoConfig.name, branchName);
         continue;
       }
 
@@ -126,6 +140,7 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
     } catch (err) {
       log(`Error executing task "${task.title}": ${err}`);
       await updateTaskStatus(repoConfig.name, task.id, "failed");
+      await deleteRemoteBranch(repoConfig.name, branchName);
     } finally {
       await cleanupRepo(repoDir);
     }

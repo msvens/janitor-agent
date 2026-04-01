@@ -20,6 +20,8 @@ export interface Settings {
   claude_max_steps: number;
   planning_max_steps: number;
   workspace_dir: string;
+  autopilot_enabled: boolean;
+  autopilot_interval_minutes: number;
 }
 
 // Repo config (from DB — managed via UI)
