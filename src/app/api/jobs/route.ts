@@ -7,8 +7,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   const jobs = await listJobs();
-  const runningId = jobManager.getRunningJobId();
-  return NextResponse.json({ jobs, runningJobId: runningId });
+  return NextResponse.json({
+    jobs,
+    runningJobId: jobManager.getRunningJobId(),
+    autopilotActive: jobManager.autopilotActive,
+  });
 }
 
 export async function POST(request: NextRequest) {

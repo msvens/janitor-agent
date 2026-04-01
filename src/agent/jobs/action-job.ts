@@ -56,8 +56,15 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
     }
 
     if (state.open_prs.length >= settings.max_open_prs) {
-      log(`At PR limit (${state.open_prs.length}/${settings.max_open_prs}), stopping`);
+      log(`At global PR limit (${state.open_prs.length}/${settings.max_open_prs}), stopping`);
       break;
+    }
+
+    // Max 1 open PR per repo — skip repos that already have one
+    const repoHasOpenPR = state.open_prs.some((pr) => pr.repo === repoConfig.name);
+    if (repoHasOpenPR) {
+      log(`${repoConfig.name}: already has an open PR, skipping`);
+      continue;
     }
 
     const task = targetTaskId
