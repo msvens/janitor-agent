@@ -102,7 +102,7 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
         const baseline = await runTests(repoDir, repoConfig.test_command);
         if (!baseline.passed) {
           log(`Baseline tests fail on clean clone — skipping task (not our fault)`);
-          log(`Baseline error: ${baseline.output.slice(0, 500)}`);
+          log(`Baseline error: ${baseline.output.slice(0, 2000)}`);
           await updateTaskStatus(repoConfig.name, task.id, "pending"); // keep pending, not failed
           continue;
         }
