@@ -13,6 +13,7 @@ import {
   createPR,
   ensureLabelExists,
   installDeps,
+  runTests,
   deleteRemoteBranch,
 } from "../github";
 
@@ -93,6 +94,19 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
       if (repoConfig.install_command) {
         log(`Installing dependencies...`);
         await installDeps(repoDir, repoConfig.install_command);
+      }
+
+      // Baseline check: verify tests pass BEFORE making any changes
+      if (repoConfig.test_command) {
+        log("Running baseline tests (before changes)...");
+        const baseline = await runTests(repoDir, repoConfig.test_command);
+        if (!baseline.passed) {
+          log(`Baseline tests fail on clean clone — skipping task (not our fault)`);
+          log(`Baseline error: ${baseline.output.slice(0, 500)}`);
+          await updateTaskStatus(repoConfig.name, task.id, "pending"); // keep pending, not failed
+          continue;
+        }
+        log("Baseline tests pass");
       }
 
       const { result: taskResult, costUsd } = await executeTask(task, repoDir, config, settings, repoConfig, log);

@@ -10,13 +10,17 @@ const FIX_PROMPT = `You are a code maintenance agent. Your previous edits broke 
 
 {{TEST_OUTPUT}}
 
-## Instructions — you have only 10 steps, do NOT waste them
+## Instructions — you have only 10 steps, be surgical
 
-1. Read the error output above carefully
-2. Read the failing file(s)
+1. Read the error output above — find the EXACT file and line that failed
+2. Read ONLY that file
 3. Use editFile to fix the issue (typically: syntax error, missing import, formatting)
-4. Do NOT undo your changes — fix them so the build passes
-5. Do NOT explore unrelated files or run git commands`;
+4. Do NOT undo your changes — adjust them so the build passes
+5. Do NOT create new files
+6. Do NOT edit files that were not part of the original task
+7. Do NOT run build/test commands yourself — the system will run them after your fix
+8. Do NOT explore the repo, run git commands, or read unrelated files
+9. If the error is not caused by your changes, output "NOT_MY_FAULT" and stop`;
 
 function formatChanges(changes: TaskChange[]): string {
   return changes
@@ -122,7 +126,7 @@ export async function executeTask(
 
       for (let attempt = 1; attempt <= maxFixAttempts; attempt++) {
         onLog(`Tests failed, asking Claude to fix (attempt ${attempt}/${maxFixAttempts})...`);
-        onLog(`Test output: ${testResult.output.slice(0, 300)}`);
+        onLog(`Test output: ${testResult.output.slice(0, 1000)}`);
 
         const fixResult = await fixTestFailures(testResult.output, repoPath, config, settings, onLog);
         totalUsage.inputTokens += fixResult.usage.inputTokens;
