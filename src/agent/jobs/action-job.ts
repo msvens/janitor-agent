@@ -1,8 +1,9 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { loadBacklog, getNextTask, updateTaskStatus } from "../backlog";
-import { getTask, getSettings, getAllRepoConfigs, getRepoConfig } from "../../db/index";
+import { getTask, getSettings, getAllRepoConfigs } from "../../db/index";
 import { executeTask } from "../action";
+import { runReconcileJob } from "./reconcile-job";
 import {
   cloneRepo,
   cleanupRepo,
@@ -32,6 +33,10 @@ export interface ActionJobResult {
 export async function runActionJob(options: ActionJobOptions = {}): Promise<ActionJobResult> {
   const { repo: repoFilter, taskId: targetTaskId, dryRun = false, onLog, signal } = options;
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
+
+  // Always reconcile first to catch merged/closed PRs
+  log("Reconciling PRs before action...");
+  await runReconcileJob({ onLog: log, signal });
 
   const config = await loadConfig();
   const settings = await getSettings();
