@@ -1,4 +1,5 @@
-import { getTasksForRepo } from "@/db/index";
+import Link from "next/link";
+import { getTasksForRepo, listJobs } from "@/db/index";
 import { TaskStatusSelect } from "@/components/backlogs/task-status-select";
 import { RunTaskButton } from "@/components/backlogs/run-task-button";
 import { RunButton } from "@/components/jobs/run-button";
@@ -38,6 +39,11 @@ export default async function RepoBacklogPage({
               <div className="flex items-center gap-2">
                 {task.status === "pending" && (
                   <RunTaskButton taskId={task.id} repo={task.repo} />
+                )}
+                {task.status === "in_progress" && (
+                  <Link href="/jobs" className="text-xs text-blue-400 hover:underline">
+                    View progress
+                  </Link>
                 )}
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
                   Level {task.aggressiveness}

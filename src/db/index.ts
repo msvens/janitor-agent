@@ -1,6 +1,6 @@
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 import * as schema from "./schema";
 import type {
   BacklogTask,
@@ -424,7 +424,18 @@ export async function getJob(jobId: string) {
 
 export async function listJobs(limit = 20) {
   const db = getDb();
-  return db.select().from(schema.jobs).orderBy(schema.jobs.startedAt).limit(limit);
+  return db.select().from(schema.jobs).orderBy(desc(schema.jobs.startedAt)).limit(limit);
+}
+
+export async function getLatestJobForTask(taskId: string) {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.jobs)
+    .where(eq(schema.jobs.taskId, taskId))
+    .orderBy(desc(schema.jobs.startedAt))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function addJobStep(step: {
