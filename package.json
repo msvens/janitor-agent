@@ -4,11 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "db:push": "drizzle-kit push",
-    "db:seed": "tsx src/db/seed.ts",
     "dev": "next dev -p 3003",
     "build": "next build",
-    "start": "next start -p 3003"
+    "start": "next start -p 3003",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "jest --passWithNoTests",
+    "test:watch": "jest --watch",
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
+    "db:push": "drizzle-kit push",
+    "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
@@ -26,13 +31,18 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.20.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "drizzle-kit": "^0.31.10",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.2",
+    "jest": "^30.3.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
+    "ts-jest": "^29.4.6",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   }

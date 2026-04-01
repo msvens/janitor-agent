@@ -83,7 +83,7 @@ export default async function RepoBacklogPage({
       </div>
 
       {tasks.length === 0 && (
-        <p className="text-gray-500">No tasks. Click "Plan" to generate tasks for this repo.</p>
+        <p className="text-gray-500">No tasks. Click &ldquo;Plan&rdquo; to generate tasks for this repo.</p>
       )}
     </div>
   );
