@@ -12,6 +12,7 @@ import {
   createPR,
   ensureLabelExists,
   installDeps,
+  deleteRemoteBranch,
 } from "../github";
 
 export interface ActionJobOptions {
@@ -79,9 +80,9 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
     await updateTaskStatus(repoConfig.name, task.id, "in_progress");
 
     log(`Cloning ${repoConfig.name}...`);
+    const branchName = `janitor/${task.id}`;
     const repoDir = await cloneRepo(repoConfig.name);
     try {
-      const branchName = `janitor/${task.id}`;
       await createBranch(repoDir, branchName);
 
       if (repoConfig.install_command) {
@@ -98,6 +99,7 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
       if (!taskResult.has_changes || !(await hasChanges(repoDir))) {
         log(`No changes produced for task "${task.title}", marking skipped`);
         await updateTaskStatus(repoConfig.name, task.id, "skipped");
+        await deleteRemoteBranch(repoConfig.name, branchName);
         continue;
       }
 
@@ -133,6 +135,7 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
     } catch (err) {
       log(`Error executing task "${task.title}": ${err}`);
       await updateTaskStatus(repoConfig.name, task.id, "failed");
+      await deleteRemoteBranch(repoConfig.name, branchName);
     } finally {
       await cleanupRepo(repoDir);
     }

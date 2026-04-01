@@ -87,6 +87,15 @@ export async function cleanupRepo(dir: string): Promise<void> {
   await rm(dir, { recursive: true, force: true });
 }
 
+export async function deleteRemoteBranch(repo: string, branchName: string): Promise<void> {
+  try {
+    await exec("gh", ["api", "-X", "DELETE", `repos/${repo}/git/refs/heads/${branchName}`]);
+    log(`Deleted remote branch ${branchName} on ${repo}`);
+  } catch {
+    // Branch may not exist on remote (never pushed) — ignore
+  }
+}
+
 export async function createBranch(repoDir: string, branchName: string): Promise<void> {
   await exec("git", ["checkout", "-b", branchName], { cwd: repoDir });
 }

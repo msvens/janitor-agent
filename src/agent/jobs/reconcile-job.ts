@@ -10,6 +10,7 @@ import {
   commitAndPush,
   checkPRStatus,
   getPRComments,
+  deleteRemoteBranch,
 } from "../github";
 import type { TrackedPR } from "../types";
 
@@ -55,6 +56,8 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
           await updateTaskStatus(pr.repo, task.id, newStatus);
           log(`Marked task "${task.title}" as ${newStatus}`);
         }
+        // Clean up remote branch (don't rely on repo's auto-delete setting)
+        await deleteRemoteBranch(pr.repo, pr.branch);
         reconciled++;
       }
     } catch (err) {
