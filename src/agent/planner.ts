@@ -1,10 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createReadOnlyTools, type StepTracker } from "./tools";
-import { LEVEL_DESCRIPTIONS, estimateCost, logStep, getChatFn } from "./agent";
+import { LEVEL_DESCRIPTIONS, estimateCost, getChatFn } from "./agent";
 import { runAgent, type StepInfo } from "./loop";
 import { PROMPTS_DIR } from "./paths";
-import type { BacklogTask, Config, RepoBacklog, RepoConfig } from "./types";
+import type { BacklogTask, Config, Settings, RepoBacklog, RepoConfig } from "./types";
 
 const PLAN_PROMPT_PATH = resolve(PROMPTS_DIR, "plan.md");
 
@@ -96,13 +96,14 @@ export async function planRepo(
   repoPath: string,
   repoConfig: RepoConfig,
   config: Config,
+  settings: Settings,
   existingBacklog: RepoBacklog,
   onLog: LogFn = console.log,
 ): Promise<{ tasks: BacklogTask[]; costUsd: number }> {
   const template = await readFile(PLAN_PROMPT_PATH, "utf-8");
   const systemPrompt = buildPlanPrompt(repoConfig.aggressiveness, template, existingBacklog);
-  const chatFn = getChatFn("claude", config);
-  const maxSteps = config.planning.max_steps;
+  const chatFn = getChatFn("claude", config, settings);
+  const maxSteps = settings.planning_max_steps;
   const stepTracker: StepTracker = { current: 0, max: maxSteps };
   const tools = createReadOnlyTools(repoPath, stepTracker);
   const stepLogger = makeStepLogger(onLog);

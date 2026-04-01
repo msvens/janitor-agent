@@ -1,43 +1,31 @@
 /**
- * Seed script: imports existing JSON backlog files and state.json into PostgreSQL.
+ * Seed script: imports existing JSON backlog files into PostgreSQL.
  * Run once after db:push: npx tsx src/db/seed.ts
+ *
+ * Repos must be added through the UI. This only imports task backlogs.
  */
 
 import { readFile, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { upsertRepo, addTask, addTrackedPR } from "./index";
-import { loadConfig } from "../agent/config";
-import type { RepoBacklog, State, BacklogTask, TaskChange } from "../agent/types";
+import { homedir } from "node:os";
+import { addTask } from "./index";
+import type { BacklogTask, TaskChange } from "../agent/types";
+
+const BACKLOG_DIR = join(homedir(), ".janitor", "backlog");
 
 async function seed() {
-  console.log("Seeding database...");
+  console.log("Seeding database from JSON backlogs...");
 
-  // Load config and sync repos
-  const config = await loadConfig();
-  for (const repo of config.repos) {
-    console.log(`  Syncing repo: ${repo.name}`);
-    await upsertRepo({
-      name: repo.name,
-      aggressiveness: repo.aggressiveness,
-      branch: repo.branch,
-      installCommand: repo.install_command,
-      testCommand: repo.test_command,
-    });
-  }
-
-  // Import backlogs
-  const backlogDir = config.planning.backlog_dir;
   try {
-    const files = await readdir(backlogDir);
+    const files = await readdir(BACKLOG_DIR);
     for (const file of files) {
       if (!file.endsWith(".json")) continue;
-      const path = join(backlogDir, file);
-      console.log(`  Importing backlog: ${file}`);
+      const path = join(BACKLOG_DIR, file);
+      console.log(`  Importing: ${file}`);
       try {
         const raw = await readFile(path, "utf-8");
         const backlog = JSON.parse(raw) as any;
-        for (const task of backlog.tasks) {
-          // Convert old subtasks format to changes format
+        for (const task of backlog.tasks ?? []) {
           const changes: TaskChange[] = (task.subtasks ?? task.changes ?? []).map((s: any) => ({
             file: s.file,
             lines: s.lines ?? (s.line_range ? `${s.line_range[0]}-${s.line_range[1]}` : ""),
@@ -57,24 +45,11 @@ async function seed() {
           await addTask(converted);
         }
       } catch (err) {
-        console.warn(`  Failed to import ${file}: ${(err as Error).message}`);
+        console.warn(`  Failed: ${(err as Error).message}`);
       }
     }
   } catch {
-    console.log("  No backlog directory found, skipping backlog import");
-  }
-
-  // Import state.json
-  const statePath = resolve(import.meta.dirname, "..", "..", "state.json");
-  try {
-    const raw = await readFile(statePath, "utf-8");
-    const state = JSON.parse(raw) as State;
-    for (const pr of state.open_prs) {
-      console.log(`  Importing tracked PR: ${pr.repo}#${pr.pr_number}`);
-      await addTrackedPR(pr);
-    }
-  } catch {
-    console.log("  No state.json found, skipping state import");
+    console.log("  No backlog directory found at", BACKLOG_DIR);
   }
 
   console.log("Seed complete.");

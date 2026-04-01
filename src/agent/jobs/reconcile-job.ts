@@ -1,7 +1,8 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
-import { initBacklog, findTaskByPR, updateTaskStatus } from "../backlog";
+import { findTaskByPR, updateTaskStatus } from "../backlog";
 import { addressComments } from "../agent";
+import { getSettings } from "../../db/index";
 import {
   cloneRepo,
   cleanupRepo,
@@ -10,7 +11,7 @@ import {
   checkPRStatus,
   getPRComments,
 } from "../github";
-import type { State, TrackedPR, Config } from "../types";
+import type { TrackedPR } from "../types";
 
 export interface ReconcileJobOptions {
   onLog?: (msg: string) => void;
@@ -28,15 +29,14 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
 
   const config = await loadConfig();
-  await initBacklog(config.planning.backlog_dir);
+  const settings = await getSettings();
   const state = await loadState();
-  const costBudget = { remaining: config.max_cost_per_run };
+  const costBudget = { remaining: settings.max_cost_per_run };
 
   let reconciled = 0;
   let commentsHandled = 0;
   let totalCost = 0;
 
-  // Reconcile open PRs
   log("Reconciling open PRs...");
   const remaining: TrackedPR[] = [];
 
@@ -66,7 +66,6 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
   state.open_prs = remaining;
   log(`Tracking ${state.open_prs.length} open PRs`);
 
-  // Handle review comments
   if (state.open_prs.length > 0) {
     log("Checking for review comments...");
     for (const pr of state.open_prs) {

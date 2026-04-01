@@ -1,7 +1,15 @@
 import { Ollama } from "ollama";
 import { Agent } from "undici";
 import type { ChatFn, ChatResponse, ToolCall, ToolSchema } from "../loop";
-import type { OllamaConfig } from "../types";
+
+export interface OllamaBackendConfig {
+  enabled: boolean;
+  host: string;
+  model: string;
+  num_ctx: number;
+  max_steps: number;
+  max_aggressiveness: number;
+}
 
 // Custom fetch with extended timeouts to handle slow local models
 // The default undici headersTimeout (~300s) is too short for large models
@@ -20,7 +28,7 @@ function createTimeoutFetch(timeoutMs: number): typeof fetch {
   };
 }
 
-export function createOllamaChatFn(config: OllamaConfig): ChatFn {
+export function createOllamaChatFn(config: OllamaBackendConfig): ChatFn {
   const client = new Ollama({
     host: config.host,
     fetch: createTimeoutFetch(10 * 60 * 1000), // 10 minutes
