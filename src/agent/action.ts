@@ -44,7 +44,8 @@ ${formatChanges(task.changes)}
 1. Read each file listed above
 2. Make ALL the changes described — they are related and should be done together
 3. Handle dependencies between changes (e.g., if you remove an import, also replace its usage)
-4. After making all changes, stop — do not explore other files or make additional changes`;
+4. After making changes, use grep to verify you caught ALL instances of the pattern — if the task says "replace X with Y" and you find more instances than listed, fix those too
+5. After making all changes, stop — do not explore unrelated files or make unrelated changes`;
 
   if (isOllama) {
     prompt += TOOL_USAGE_HINT;
