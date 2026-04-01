@@ -64,6 +64,7 @@ export async function runTests(
       cwd: repoDir,
       timeout: 120_000,
       maxBuffer: 5 * 1024 * 1024,
+      env: { ...process.env, NODE_ENV: "production" },
     });
     const output = (stdout + "\n" + stderr).trim();
     log(`Tests passed`);
