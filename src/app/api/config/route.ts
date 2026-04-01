@@ -1,32 +1,52 @@
-import { loadConfig, saveConfig } from "@/agent/config";
-import { upsertRepo } from "@/db/index";
+import { loadConfig } from "@/agent/config";
+import { getSettings, updateSettings, getAllRepoConfigs, upsertRepo, deleteRepo } from "@/db/index";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+// GET returns bootstrap config + runtime settings + repos
 export async function GET() {
   try {
     const config = await loadConfig();
-    return NextResponse.json(config);
+    const settings = await getSettings();
+    const repos = await getAllRepoConfigs();
+    return NextResponse.json({ config, settings, repos });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 }
 
+// PUT updates runtime settings and/or repos (NOT bootstrap config)
 export async function PUT(request: NextRequest) {
   try {
-    const config = await request.json();
-    await saveConfig(config);
+    const body = await request.json();
 
-    // Sync repos to DB
-    for (const repo of config.repos) {
-      await upsertRepo({
-        name: repo.name,
-        aggressiveness: repo.aggressiveness,
-        branch: repo.branch,
-        installCommand: repo.install_command,
-        testCommand: repo.test_command,
-      });
+    if (body.settings) {
+      await updateSettings(body.settings);
+    }
+
+    if (body.repos) {
+      // Sync repos: upsert provided, delete removed
+      const existing = await getAllRepoConfigs();
+      const newNames = new Set(body.repos.map((r: any) => r.name));
+
+      // Delete repos not in the new list
+      for (const repo of existing) {
+        if (!newNames.has(repo.name)) {
+          await deleteRepo(repo.name);
+        }
+      }
+
+      // Upsert all provided repos
+      for (const repo of body.repos) {
+        await upsertRepo({
+          name: repo.name,
+          aggressiveness: repo.aggressiveness ?? 2,
+          branch: repo.branch ?? "main",
+          installCommand: repo.install_command,
+          testCommand: repo.test_command,
+        });
+      }
     }
 
     return NextResponse.json({ ok: true });

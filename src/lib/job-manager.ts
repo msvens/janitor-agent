@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
+import "@/lib/init";
 import { createJob, updateJob } from "@/db/index";
 import { runPlanJob } from "@/agent/jobs/plan-job";
 import { runActionJob } from "@/agent/jobs/action-job";

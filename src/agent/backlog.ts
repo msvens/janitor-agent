@@ -1,17 +1,8 @@
 import * as db from "../db/index";
 import type { BacklogTask, RepoBacklog, TaskStatus } from "./types";
 
-export async function initBacklog(_dir: string): Promise<void> {
-  // No-op: DB handles persistence. Kept for API compatibility.
-  await db.initDb();
-}
-
 export async function loadBacklog(repo: string): Promise<RepoBacklog> {
   return db.loadBacklog(repo);
-}
-
-export async function saveBacklog(_backlog: RepoBacklog): Promise<void> {
-  // No-op: individual operations write directly to DB.
 }
 
 export function generateTaskId(repo: string, seq: number): string {

@@ -2,7 +2,7 @@ import { createTools } from "./tools";
 import { selectBackend, getChatFn, maxStepsForBackend, estimateCost, TOOL_USAGE_HINT } from "./agent";
 import { runAgent, type ChatUsage, type StepInfo } from "./loop";
 import { runTests } from "./github";
-import type { AnalysisResult, BacklogTask, Config, RepoConfig, TaskChange } from "./types";
+import type { AnalysisResult, BacklogTask, Config, Settings, RepoConfig, TaskChange } from "./types";
 
 const FIX_PROMPT = `You are a code maintenance agent. Your previous edits broke the build/tests.
 
@@ -80,12 +80,13 @@ export async function executeTask(
   task: BacklogTask,
   repoPath: string,
   config: Config,
+  settings: Settings,
   repoConfig: RepoConfig,
   onLog: LogFn = console.log,
 ): Promise<{ result: AnalysisResult; costUsd: number }> {
-  const backend = selectBackend(task.aggressiveness, config);
-  const chatFn = getChatFn(backend, config);
-  const maxSteps = maxStepsForBackend(backend, config);
+  const backend = selectBackend(task.aggressiveness, settings);
+  const chatFn = getChatFn(backend, config, settings);
+  const maxSteps = maxStepsForBackend(backend, settings);
 
   onLog(`Task: "${task.title}" — ${task.changes.length} changes (backend=${backend})`);
 
@@ -123,7 +124,7 @@ export async function executeTask(
         onLog(`Tests failed, asking Claude to fix (attempt ${attempt}/${maxFixAttempts})...`);
         onLog(`Test output: ${testResult.output.slice(0, 300)}`);
 
-        const fixResult = await fixTestFailures(testResult.output, repoPath, config, onLog);
+        const fixResult = await fixTestFailures(testResult.output, repoPath, config, settings, onLog);
         totalUsage.inputTokens += fixResult.usage.inputTokens;
         totalUsage.outputTokens += fixResult.usage.outputTokens;
 
@@ -172,10 +173,11 @@ async function fixTestFailures(
   testOutput: string,
   repoPath: string,
   config: Config,
+  settings: Settings,
   onLog: LogFn = console.log,
 ): Promise<{ usage: ChatUsage }> {
   const prompt = FIX_PROMPT.replace("{{TEST_OUTPUT}}", testOutput.slice(0, 5000));
-  const chatFn = getChatFn("claude", config);
+  const chatFn = getChatFn("claude", config, settings);
   const tools = createTools(repoPath);
   const stepLogger = makeStepLogger(onLog);
 

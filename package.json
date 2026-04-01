@@ -4,10 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "plan": "tsx src/agent/index.ts --plan",
-    "action": "tsx src/agent/index.ts --action",
-    "action:dry-run": "tsx src/agent/index.ts --action --dry-run",
-    "reconcile": "tsx src/agent/index.ts --reconcile",
     "db:push": "drizzle-kit push",
     "db:seed": "tsx src/db/seed.ts",
     "dev": "next dev -p 3003",

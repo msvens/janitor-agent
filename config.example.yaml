@@ -1,46 +1,17 @@
 # Janitor Agent Configuration
-# Copy this file to config.yaml and edit to match your setup.
+# Copy to ~/.janitor/config.yaml
 
-# Maximum cost per run (USD) - safety limit
-max_cost_per_run: 0.50
+# Database connection
+database_url: postgresql://localhost:5432/janitor
 
-# Maximum open PRs across all repos
-max_open_prs: 5
+# Web server port
+port: 3003
 
-# Default aggressiveness (1-5)
-default_aggressiveness: 2
-
-# Claude configuration (always used for planning, test fixing, and complex tasks)
-# Requires ANTHROPIC_API_KEY environment variable
+# Claude API (requires ANTHROPIC_API_KEY env var)
 claude:
   model: claude-sonnet-4-6
-  max_steps: 15
 
-# Ollama configuration (optional — used for simple tasks when enabled)
-# Backend is selected by task complexity, not per-repo
+# Ollama (optional — for local LLM)
 ollama:
-  enabled: false               # set to true to use local LLM for simple tasks
   host: http://localhost:11434
   model: qwen3-coder
-  num_ctx: 32768
-  max_steps: 15
-  max_aggressiveness: 2        # only assign tasks at this level or below to Ollama
-
-# Planning agent configuration
-planning:
-  max_steps: 25
-  workspace_dir: ~/.janitor/workspaces
-  backlog_dir: ~/.janitor/backlog
-
-# Repos to maintain
-repos:
-  - name: owner/repo-name
-    aggressiveness: 2
-    branch: main
-    # install_command: "npm install"       # optional: run before tests
-    # test_command: "npm test"             # optional: validate changes
-
-  # - name: owner/another-repo
-  #   aggressiveness: 3
-  #   branch: main
-  #   test_command: "go test ./..."

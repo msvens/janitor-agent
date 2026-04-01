@@ -11,28 +11,32 @@ interface RepoConfig {
   test_command?: string;
 }
 
-interface Config {
+interface Settings {
   max_cost_per_run: number;
   max_open_prs: number;
   default_aggressiveness: number;
-  claude: { model: string; max_steps: number };
-  ollama: {
-    enabled: boolean;
-    host: string;
-    model: string;
-    num_ctx: number;
-    max_steps: number;
-    max_aggressiveness: number;
-  };
-  planning: { max_steps: number; workspace_dir: string; backlog_dir: string };
-  repos: RepoConfig[];
+  ollama_enabled: boolean;
+  ollama_num_ctx: number;
+  ollama_max_aggressiveness: number;
+  ollama_max_steps: number;
+  claude_max_steps: number;
+  planning_max_steps: number;
+  workspace_dir: string;
 }
 
-function Input({ label, value, onChange, type = "text" }: {
+interface BootstrapConfig {
+  database_url: string;
+  port: number;
+  claude: { model: string };
+  ollama: { host: string; model: string };
+}
+
+function Input({ label, value, onChange, type = "text", disabled = false }: {
   label: string;
   value: string | number;
   onChange: (v: string) => void;
   type?: string;
+  disabled?: boolean;
 }) {
   return (
     <div>
@@ -41,7 +45,8 @@ function Input({ label, value, onChange, type = "text" }: {
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+        disabled={disabled}
+        className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-blue-500 disabled:opacity-50"
       />
     </div>
   );
@@ -67,7 +72,9 @@ function Toggle({ label, checked, onChange }: {
 }
 
 export default function ConfigPage() {
-  const [config, setConfig] = useState<Config | null>(null);
+  const [config, setConfig] = useState<BootstrapConfig | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [repos, setRepos] = useState<RepoConfig[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,12 +82,16 @@ export default function ConfigPage() {
   useEffect(() => {
     fetch("/api/config")
       .then((r) => r.json())
-      .then(setConfig)
+      .then((data) => {
+        setConfig(data.config);
+        setSettings(data.settings);
+        setRepos(data.repos);
+      })
       .catch((err) => setError(err.message));
   }, []);
 
   async function handleSave() {
-    if (!config) return;
+    if (!settings) return;
     setSaving(true);
     setSaved(false);
     setError(null);
@@ -88,7 +99,7 @@ export default function ConfigPage() {
       const res = await fetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        body: JSON.stringify({ settings, repos }),
       });
       if (!res.ok) {
         const data = await res.json();
@@ -104,37 +115,24 @@ export default function ConfigPage() {
   }
 
   function updateRepo(index: number, field: string, value: string | number) {
-    if (!config) return;
-    const repos = [...config.repos];
-    repos[index] = { ...repos[index]!, [field]: value };
-    setConfig({ ...config, repos });
+    const updated = [...repos];
+    updated[index] = { ...updated[index]!, [field]: value };
+    setRepos(updated);
   }
 
   function addRepo() {
-    if (!config) return;
-    setConfig({
-      ...config,
-      repos: [
-        ...config.repos,
-        { name: "owner/repo", aggressiveness: 2, branch: "main" },
-      ],
-    });
+    setRepos([...repos, { name: "owner/repo", aggressiveness: 2, branch: "main" }]);
   }
 
   function removeRepo(index: number) {
-    if (!config) return;
-    setConfig({ ...config, repos: config.repos.filter((_, i) => i !== index) });
+    setRepos(repos.filter((_, i) => i !== index));
   }
 
-  if (!config) {
+  if (!config || !settings) {
     return (
       <div>
         <h2 className="text-2xl font-bold mb-6">Configuration</h2>
-        {error ? (
-          <p className="text-red-400">{error}</p>
-        ) : (
-          <p className="text-gray-500">Loading...</p>
-        )}
+        {error ? <p className="text-red-400">{error}</p> : <p className="text-gray-500">Loading...</p>}
       </div>
     );
   }
@@ -158,77 +156,81 @@ export default function ConfigPage() {
 
       <div className="space-y-6">
         <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-          <h3 className="font-semibold mb-4">Global</h3>
-          <div className="grid grid-cols-3 gap-4">
+          <h3 className="font-semibold mb-1">Bootstrap</h3>
+          <p className="text-xs text-gray-500 mb-4">From config.yaml — restart required to change</p>
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Database URL" value={config.database_url} onChange={() => {}} disabled />
+            <Input label="Port" value={config.port} onChange={() => {}} disabled />
+            <Input label="Claude model" value={config.claude.model} onChange={() => {}} disabled />
+            <Input label="Ollama model" value={config.ollama.model} onChange={() => {}} disabled />
+          </div>
+        </section>
+
+        <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+          <h3 className="font-semibold mb-4">Settings</h3>
+          <div className="grid grid-cols-3 gap-4 mb-4">
             <Input
               label="Max cost per run ($)"
               type="number"
-              value={config.max_cost_per_run}
-              onChange={(v) => setConfig({ ...config, max_cost_per_run: parseFloat(v) || 0 })}
+              value={settings.max_cost_per_run}
+              onChange={(v) => setSettings({ ...settings, max_cost_per_run: parseFloat(v) || 0 })}
             />
             <Input
               label="Max open PRs"
               type="number"
-              value={config.max_open_prs}
-              onChange={(v) => setConfig({ ...config, max_open_prs: parseInt(v) || 0 })}
+              value={settings.max_open_prs}
+              onChange={(v) => setSettings({ ...settings, max_open_prs: parseInt(v) || 0 })}
             />
             <Input
               label="Default aggressiveness"
               type="number"
-              value={config.default_aggressiveness}
-              onChange={(v) => setConfig({ ...config, default_aggressiveness: parseInt(v) || 2 })}
+              value={settings.default_aggressiveness}
+              onChange={(v) => setSettings({ ...settings, default_aggressiveness: parseInt(v) || 2 })}
             />
           </div>
-        </section>
 
-        <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-          <h3 className="font-semibold mb-4">Claude</h3>
-          <div className="grid grid-cols-2 gap-4">
+          <h4 className="text-sm font-medium text-gray-300 mb-3">Claude</h4>
+          <div className="grid grid-cols-2 gap-4 mb-4">
             <Input
-              label="Model"
-              value={config.claude.model}
-              onChange={(v) => setConfig({ ...config, claude: { ...config.claude, model: v } })}
+              label="Max steps"
+              type="number"
+              value={settings.claude_max_steps}
+              onChange={(v) => setSettings({ ...settings, claude_max_steps: parseInt(v) || 15 })}
+            />
+            <Input
+              label="Planning max steps"
+              type="number"
+              value={settings.planning_max_steps}
+              onChange={(v) => setSettings({ ...settings, planning_max_steps: parseInt(v) || 25 })}
+            />
+          </div>
+
+          <h4 className="text-sm font-medium text-gray-300 mb-3">Ollama</h4>
+          <div className="mb-4">
+            <Toggle
+              label="Enable Ollama for simple tasks"
+              checked={settings.ollama_enabled}
+              onChange={(v) => setSettings({ ...settings, ollama_enabled: v })}
+            />
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            <Input
+              label="Context window"
+              type="number"
+              value={settings.ollama_num_ctx}
+              onChange={(v) => setSettings({ ...settings, ollama_num_ctx: parseInt(v) || 32768 })}
+            />
+            <Input
+              label="Max aggressiveness"
+              type="number"
+              value={settings.ollama_max_aggressiveness}
+              onChange={(v) => setSettings({ ...settings, ollama_max_aggressiveness: parseInt(v) || 2 })}
             />
             <Input
               label="Max steps"
               type="number"
-              value={config.claude.max_steps}
-              onChange={(v) => setConfig({ ...config, claude: { ...config.claude, max_steps: parseInt(v) || 15 } })}
-            />
-          </div>
-        </section>
-
-        <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-          <h3 className="font-semibold mb-4">Ollama</h3>
-          <div className="mb-4">
-            <Toggle
-              label="Enable Ollama for simple tasks"
-              checked={config.ollama.enabled}
-              onChange={(v) => setConfig({ ...config, ollama: { ...config.ollama, enabled: v } })}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Host"
-              value={config.ollama.host}
-              onChange={(v) => setConfig({ ...config, ollama: { ...config.ollama, host: v } })}
-            />
-            <Input
-              label="Model"
-              value={config.ollama.model}
-              onChange={(v) => setConfig({ ...config, ollama: { ...config.ollama, model: v } })}
-            />
-            <Input
-              label="Context window"
-              type="number"
-              value={config.ollama.num_ctx}
-              onChange={(v) => setConfig({ ...config, ollama: { ...config.ollama, num_ctx: parseInt(v) || 32768 } })}
-            />
-            <Input
-              label="Max aggressiveness for Ollama"
-              type="number"
-              value={config.ollama.max_aggressiveness}
-              onChange={(v) => setConfig({ ...config, ollama: { ...config.ollama, max_aggressiveness: parseInt(v) || 2 } })}
+              value={settings.ollama_max_steps}
+              onChange={(v) => setSettings({ ...settings, ollama_max_steps: parseInt(v) || 15 })}
             />
           </div>
         </section>
@@ -245,49 +247,34 @@ export default function ConfigPage() {
             </button>
           </div>
           <div className="space-y-4">
-            {config.repos.map((repo, i) => (
+            {repos.map((repo, i) => (
               <div key={i} className="bg-gray-800/50 rounded-lg p-4">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 grid grid-cols-3 gap-3">
-                    <Input
-                      label="Name (owner/repo)"
-                      value={repo.name}
-                      onChange={(v) => updateRepo(i, "name", v)}
-                    />
-                    <Input
-                      label="Branch"
-                      value={repo.branch}
-                      onChange={(v) => updateRepo(i, "branch", v)}
-                    />
-                    <Input
-                      label="Aggressiveness"
-                      type="number"
-                      value={repo.aggressiveness}
-                      onChange={(v) => updateRepo(i, "aggressiveness", parseInt(v) || 2)}
-                    />
+                    <Input label="Name (owner/repo)" value={repo.name} onChange={(v) => updateRepo(i, "name", v)} />
+                    <Input label="Branch" value={repo.branch} onChange={(v) => updateRepo(i, "branch", v)} />
+                    <Input label="Aggressiveness" type="number" value={repo.aggressiveness} onChange={(v) => updateRepo(i, "aggressiveness", parseInt(v) || 2)} />
                   </div>
-                  <button
-                    onClick={() => removeRepo(i)}
-                    className="ml-3 mt-5 p-1.5 text-gray-500 hover:text-red-400 rounded"
-                  >
+                  <button onClick={() => removeRepo(i)} className="ml-3 mt-5 p-1.5 text-gray-500 hover:text-red-400 rounded">
                     <TrashIcon className="w-4 h-4" />
                   </button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label="Install command"
-                    value={repo.install_command ?? ""}
-                    onChange={(v) => updateRepo(i, "install_command", v || undefined as unknown as string)}
-                  />
-                  <Input
-                    label="Test command"
-                    value={repo.test_command ?? ""}
-                    onChange={(v) => updateRepo(i, "test_command", v || undefined as unknown as string)}
-                  />
+                  <Input label="Install command" value={repo.install_command ?? ""} onChange={(v) => updateRepo(i, "install_command", v || undefined as unknown as string)} />
+                  <Input label="Test command" value={repo.test_command ?? ""} onChange={(v) => updateRepo(i, "test_command", v || undefined as unknown as string)} />
                 </div>
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
+          <h3 className="font-semibold mb-3">Advanced</h3>
+          <Input
+            label="Workspace directory"
+            value={settings.workspace_dir}
+            onChange={(v) => setSettings({ ...settings, workspace_dir: v })}
+          />
         </section>
       </div>
     </div>

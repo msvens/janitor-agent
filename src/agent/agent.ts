@@ -1,8 +1,7 @@
 import { createClaudeChatFn } from "./backends/claude";
 import { createOllamaChatFn } from "./backends/ollama";
-import { runAgent, type ChatFn, type ChatUsage, type StepInfo } from "./loop";
-import { createTools } from "./tools";
-import type { Backend, Config } from "./types";
+import { type ChatFn, type ChatUsage, type StepInfo } from "./loop";
+import type { Backend, Config, Settings } from "./types";
 
 export const LEVEL_DESCRIPTIONS: Record<number, string> = {
   1: `**Minimal**: Only dependency updates.
@@ -52,22 +51,29 @@ Do NOT use bash for searching files — use the glob and grep tools instead. Sav
 
 // --- Backend selection ---
 
-export function selectBackend(aggressiveness: number, config: Config): Backend {
-  if (config.ollama.enabled && aggressiveness <= config.ollama.max_aggressiveness) {
+export function selectBackend(aggressiveness: number, settings: Settings): Backend {
+  if (settings.ollama_enabled && aggressiveness <= settings.ollama_max_aggressiveness) {
     return "ollama";
   }
   return "claude";
 }
 
-export function getChatFn(backend: Backend, config: Config): ChatFn {
+export function getChatFn(backend: Backend, config: Config, settings: Settings): ChatFn {
   if (backend === "ollama") {
-    return createOllamaChatFn(config.ollama);
+    return createOllamaChatFn({
+      enabled: settings.ollama_enabled,
+      host: config.ollama.host,
+      model: config.ollama.model,
+      num_ctx: settings.ollama_num_ctx,
+      max_steps: settings.ollama_max_steps,
+      max_aggressiveness: settings.ollama_max_aggressiveness,
+    });
   }
   return createClaudeChatFn(config.claude.model);
 }
 
-export function maxStepsForBackend(backend: Backend, config: Config): number {
-  return backend === "ollama" ? config.ollama.max_steps : config.claude.max_steps;
+export function maxStepsForBackend(backend: Backend, settings: Settings): number {
+  return backend === "ollama" ? settings.ollama_max_steps : settings.claude_max_steps;
 }
 
 // --- Cost estimation ---
@@ -134,7 +140,10 @@ export async function addressComments(
   config: Config,
   abortController?: AbortController,
 ): Promise<number> {
-  const chatFn = getChatFn("claude", config);
+  const { runAgent } = await import("./loop");
+  const { createTools } = await import("./tools");
+
+  const chatFn = createClaudeChatFn(config.claude.model);
   const tools = createTools(repoPath);
 
   const commentBlock = comments

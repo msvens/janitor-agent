@@ -1,7 +1,8 @@
 import { loadConfig } from "../config";
-import { initBacklog, loadBacklog, addTasks } from "../backlog";
+import { loadBacklog, addTasks } from "../backlog";
 import { planRepo } from "../planner";
 import { ensureWorkspace } from "../github";
+import { getSettings, getAllRepoConfigs } from "../../db/index";
 
 export interface PlanJobOptions {
   repo?: string;
@@ -19,15 +20,15 @@ export async function runPlanJob(options: PlanJobOptions = {}): Promise<PlanJobR
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
 
   const config = await loadConfig();
-  await initBacklog(config.planning.backlog_dir);
-  const costBudget = { remaining: config.max_cost_per_run };
+  const settings = await getSettings();
+  const costBudget = { remaining: settings.max_cost_per_run };
 
   const repos = repoFilter
-    ? config.repos.filter((r) => r.name === repoFilter)
-    : config.repos;
+    ? (await getAllRepoConfigs()).filter((r) => r.name === repoFilter)
+    : await getAllRepoConfigs();
 
   if (repos.length === 0) {
-    log(repoFilter ? `Repo ${repoFilter} not found in config` : "No repos configured");
+    log(repoFilter ? `Repo ${repoFilter} not found` : "No repos configured");
     return { tasksAdded: 0, costUsd: 0 };
   }
 
@@ -47,19 +48,16 @@ export async function runPlanJob(options: PlanJobOptions = {}): Promise<PlanJobR
       log(`${repoConfig.name}: ${pending} existing pending tasks (will find new ones)`);
     }
 
-    log(`Planning ${repoConfig.name} (aggressiveness=${repoConfig.aggressiveness})`);
-
     const repoDir = await ensureWorkspace(
       repoConfig.name,
-      config.planning.workspace_dir,
+      settings.workspace_dir.replace("~", process.env.HOME ?? "~"),
       repoConfig.branch,
     );
 
     try {
-      const { tasks, costUsd } = await planRepo(repoDir, repoConfig, config, backlog, log);
+      const { tasks, costUsd } = await planRepo(repoDir, repoConfig, config, settings, backlog, log);
       costBudget.remaining -= costUsd;
       totalCost += costUsd;
-      log(`Found ${tasks.length} tasks, cost: $${costUsd.toFixed(4)}`);
 
       if (tasks.length > 0) {
         await addTasks(repoConfig.name, tasks);

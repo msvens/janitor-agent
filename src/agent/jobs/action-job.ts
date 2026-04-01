@@ -1,7 +1,7 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
-import { initBacklog, loadBacklog, getNextTask, updateTaskStatus } from "../backlog";
-import { getTask } from "../../db/index";
+import { loadBacklog, getNextTask, updateTaskStatus } from "../backlog";
+import { getTask, getSettings, getAllRepoConfigs, getRepoConfig } from "../../db/index";
 import { executeTask } from "../action";
 import {
   cloneRepo,
@@ -33,16 +33,16 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
 
   const config = await loadConfig();
-  await initBacklog(config.planning.backlog_dir);
+  const settings = await getSettings();
   const state = await loadState();
-  const costBudget = { remaining: config.max_cost_per_run };
+  const costBudget = { remaining: settings.max_cost_per_run };
 
   const repos = repoFilter
-    ? config.repos.filter((r) => r.name === repoFilter)
-    : config.repos;
+    ? (await getAllRepoConfigs()).filter((r) => r.name === repoFilter)
+    : await getAllRepoConfigs();
 
   if (repos.length === 0) {
-    log(repoFilter ? `Repo ${repoFilter} not found in config` : "No repos configured");
+    log(repoFilter ? `Repo ${repoFilter} not found` : "No repos configured");
     return { costUsd: 0 };
   }
 
@@ -55,12 +55,11 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
       break;
     }
 
-    if (state.open_prs.length >= config.max_open_prs) {
-      log(`At PR limit (${state.open_prs.length}/${config.max_open_prs}), stopping`);
+    if (state.open_prs.length >= settings.max_open_prs) {
+      log(`At PR limit (${state.open_prs.length}/${settings.max_open_prs}), stopping`);
       break;
     }
 
-    // Use specific task if requested, otherwise pick next pending
     const task = targetTaskId
       ? await getTask(targetTaskId)
       : getNextTask(await loadBacklog(repoConfig.name));
@@ -83,7 +82,7 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
         await installDeps(repoDir, repoConfig.install_command);
       }
 
-      const { result: taskResult, costUsd } = await executeTask(task, repoDir, config, repoConfig, log);
+      const { result: taskResult, costUsd } = await executeTask(task, repoDir, config, settings, repoConfig, log);
       costBudget.remaining -= costUsd;
       result.costUsd += costUsd;
       result.taskTitle = task.title;

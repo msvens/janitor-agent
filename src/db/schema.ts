@@ -1,5 +1,12 @@
 import { pgTable, text, integer, real, uniqueIndex, index, serial } from "drizzle-orm/pg-core";
 
+// --- Settings (key-value, runtime config from UI) ---
+
+export const settings = pgTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+});
+
 // --- Repos ---
 
 export const repos = pgTable("repos", {

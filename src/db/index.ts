@@ -9,23 +9,81 @@ import type {
   TrackedPR,
   TaskStatus,
   TaskChange,
+  Settings,
+  RepoConfig,
 } from "../agent/types";
 
 // --- Connection ---
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgresql://localhost:5432/janitor";
-
 let _db: ReturnType<typeof drizzle> | null = null;
+let _dbUrl: string = process.env.DATABASE_URL ?? "postgresql://localhost:5432/janitor";
+
+export function initDb(databaseUrl?: string) {
+  if (databaseUrl) _dbUrl = databaseUrl;
+  getDb(); // ensure connection
+}
 
 export function getDb() {
   if (_db) return _db;
-  const pool = new pg.Pool({ connectionString: DATABASE_URL });
+  const pool = new pg.Pool({ connectionString: _dbUrl });
   _db = drizzle(pool, { schema });
   return _db;
 }
 
 export function closeDb() {
   _db = null;
+}
+
+// --- Settings ---
+
+const DEFAULT_SETTINGS: Settings = {
+  max_cost_per_run: 0.50,
+  max_open_prs: 5,
+  default_aggressiveness: 2,
+  ollama_enabled: false,
+  ollama_num_ctx: 32768,
+  ollama_max_aggressiveness: 2,
+  ollama_max_steps: 15,
+  claude_max_steps: 15,
+  planning_max_steps: 25,
+  workspace_dir: "~/.janitor/workspaces",
+};
+
+export async function getSettings(): Promise<Settings> {
+  const db = getDb();
+  const rows = await db.select().from(schema.settings);
+  const settings = { ...DEFAULT_SETTINGS };
+  for (const row of rows) {
+    try {
+      (settings as Record<string, unknown>)[row.key] = JSON.parse(row.value);
+    } catch {
+      // skip invalid values
+    }
+  }
+  return settings;
+}
+
+export async function updateSettings(updates: Partial<Settings>) {
+  const db = getDb();
+  for (const [key, value] of Object.entries(updates)) {
+    await db.insert(schema.settings)
+      .values({ key, value: JSON.stringify(value) })
+      .onConflictDoUpdate({
+        target: schema.settings.key,
+        set: { value: JSON.stringify(value) },
+      });
+  }
+}
+
+export async function getSetting<K extends keyof Settings>(key: K): Promise<Settings[K]> {
+  const db = getDb();
+  const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
+  if (rows.length === 0) return DEFAULT_SETTINGS[key];
+  try {
+    return JSON.parse(rows[0]!.value) as Settings[K];
+  } catch {
+    return DEFAULT_SETTINGS[key];
+  }
 }
 
 // --- Repos ---
@@ -66,6 +124,31 @@ export async function getRepo(name: string) {
 export async function getAllRepos() {
   const db = getDb();
   return db.select().from(schema.repos);
+}
+
+export async function deleteRepo(name: string) {
+  const db = getDb();
+  await db.delete(schema.repos).where(eq(schema.repos.name, name));
+}
+
+export function repoRowToConfig(row: typeof schema.repos.$inferSelect): RepoConfig {
+  return {
+    name: row.name,
+    aggressiveness: row.aggressiveness,
+    branch: row.branch,
+    install_command: row.installCommand ?? undefined,
+    test_command: row.testCommand ?? undefined,
+  };
+}
+
+export async function getRepoConfig(name: string): Promise<RepoConfig | null> {
+  const row = await getRepo(name);
+  return row ? repoRowToConfig(row) : null;
+}
+
+export async function getAllRepoConfigs(): Promise<RepoConfig[]> {
+  const rows = await getAllRepos();
+  return rows.map(repoRowToConfig);
 }
 
 export async function updateRepoLastPlanned(name: string) {
@@ -366,8 +449,3 @@ export async function getJobSteps(jobId: string) {
     .orderBy(asc(schema.jobSteps.stepNumber));
 }
 
-// --- Init ---
-
-export async function initDb() {
-  getDb();
-}
