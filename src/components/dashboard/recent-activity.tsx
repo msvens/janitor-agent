@@ -4,7 +4,7 @@ import { listJobs } from "@/db/index";
 const statusIcons: Record<string, { icon: string; color: string }> = {
   completed: { icon: "✓", color: "text-green-400" },
   failed: { icon: "✗", color: "text-red-400" },
-  aborted: { icon: "⊘", color: "text-gray-400" },
+  aborted: { icon: "⊘", color: "text-yellow-400" },
   running: { icon: "⟳", color: "text-blue-400" },
 };
 
@@ -31,10 +31,11 @@ function relativeTime(iso: string): string {
 }
 
 export async function RecentActivity() {
-  const allJobs = await listJobs(20);
-  // Filter out jobs that were just killed by server restart with no real work done
+  const allJobs = await listJobs(30);
+  // Filter: hide reconcile jobs and zero-cost aborted jobs (server restarts)
   const jobs = allJobs
-    .filter((j) => !(j.error === "Server restarted" && j.costUsd === 0))
+    .filter((j) => j.type !== "reconcile")
+    .filter((j) => !(j.status === "aborted" && j.costUsd === 0))
     .slice(0, 10);
 
   if (jobs.length === 0) {

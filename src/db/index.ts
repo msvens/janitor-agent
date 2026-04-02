@@ -315,20 +315,33 @@ export async function addTasks(repo: string, newTasks: BacklogTask[]) {
 // --- Tracked PRs ---
 
 export async function getTrackedPRs(repo?: string): Promise<TrackedPR[]> {
+  return getOpenPRs(repo);
+}
+
+export async function getOpenPRs(repo?: string): Promise<TrackedPR[]> {
+  const db = getDb();
+  const conditions = repo
+    ? and(eq(schema.trackedPrs.repo, repo), eq(schema.trackedPrs.status, "open"))
+    : eq(schema.trackedPrs.status, "open");
+  const rows = await db.select().from(schema.trackedPrs).where(conditions).orderBy(desc(schema.trackedPrs.createdAt));
+  return rows.map(prRowToTrackedPR);
+}
+
+export async function getAllPRs(repo?: string) {
   const db = getDb();
   const conditions = repo ? eq(schema.trackedPrs.repo, repo) : undefined;
-  const rows = await db
-    .select()
-    .from(schema.trackedPrs)
-    .where(conditions);
+  const rows = await db.select().from(schema.trackedPrs).where(conditions).orderBy(desc(schema.trackedPrs.createdAt));
+  return rows.map((row) => ({ ...prRowToTrackedPR(row), status: row.status }));
+}
 
-  return rows.map((row) => ({
+function prRowToTrackedPR(row: typeof schema.trackedPrs.$inferSelect): TrackedPR {
+  return {
     repo: row.repo,
     pr_number: row.prNumber,
     branch: row.branch,
     created_at: row.createdAt,
     last_checked: row.lastChecked,
-  }));
+  };
 }
 
 export async function addTrackedPR(pr: TrackedPR) {
@@ -339,13 +352,27 @@ export async function addTrackedPR(pr: TrackedPR) {
       prNumber: pr.pr_number,
       branch: pr.branch,
       taskId: null,
+      status: "open",
       createdAt: pr.created_at,
       lastChecked: pr.last_checked,
     })
     .onConflictDoNothing();
 }
 
+export async function updatePRStatus(repo: string, prNumber: number, status: string) {
+  const db = getDb();
+  await db.update(schema.trackedPrs)
+    .set({ status, lastChecked: new Date().toISOString() })
+    .where(
+      and(
+        eq(schema.trackedPrs.repo, repo),
+        eq(schema.trackedPrs.prNumber, prNumber),
+      ),
+    );
+}
+
 export async function removeTrackedPR(repo: string, prNumber: number) {
+  // Keep for backwards compat but prefer updatePRStatus
   const db = getDb();
   await db.delete(schema.trackedPrs)
     .where(
@@ -371,7 +398,7 @@ export async function updatePRLastChecked(repo: string, prNumber: number) {
 // --- State (compatibility layer) ---
 
 export async function loadState(): Promise<State> {
-  const prs = await getTrackedPRs();
+  const prs = await getOpenPRs();
   return {
     open_prs: prs,
     repo_history: {},
@@ -380,8 +407,19 @@ export async function loadState(): Promise<State> {
 }
 
 export async function saveState(state: State) {
+  // Update open PRs — mark missing ones as closed, add new ones
   const db = getDb();
-  await db.delete(schema.trackedPrs);
+  const currentOpen = await getOpenPRs();
+  const newPrKeys = new Set(state.open_prs.map((p) => `${p.repo}:${p.pr_number}`));
+
+  // Close PRs no longer in the open list
+  for (const pr of currentOpen) {
+    if (!newPrKeys.has(`${pr.repo}:${pr.pr_number}`)) {
+      await updatePRStatus(pr.repo, pr.pr_number, "closed");
+    }
+  }
+
+  // Add new PRs
   for (const pr of state.open_prs) {
     await addTrackedPR(pr);
   }
