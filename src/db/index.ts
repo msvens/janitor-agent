@@ -427,6 +427,34 @@ export async function listJobs(limit = 20) {
   return db.select().from(schema.jobs).orderBy(desc(schema.jobs.startedAt)).limit(limit);
 }
 
+export async function getJobStats() {
+  const db = getDb();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayStr = todayStart.toISOString();
+
+  const allToday = await db
+    .select()
+    .from(schema.jobs)
+    .where(and(
+      eq(schema.jobs.type, "action"),
+    ));
+
+  const todayJobs = allToday.filter((j) => j.startedAt >= todayStr);
+  const completed = todayJobs.filter((j) => j.status === "completed");
+  const failed = todayJobs.filter((j) => j.status === "failed");
+  const totalCost = todayJobs.reduce((sum, j) => sum + (j.costUsd ?? 0), 0);
+
+  return {
+    today: {
+      completed: completed.length,
+      failed: failed.length,
+      totalJobs: todayJobs.length,
+      totalCost,
+    },
+  };
+}
+
 export async function getLatestJobForTask(taskId: string) {
   const db = getDb();
   const rows = await db
