@@ -153,7 +153,7 @@ class JobManager extends EventEmitter {
     onLog: (msg: string) => void,
   ): Promise<void> {
     try {
-      const options = { repo, taskId, onLog, signal: controller.signal };
+      const options = { repo, taskId, jobId, onLog, signal: controller.signal };
       let costUsd = 0;
 
       switch (type) {

@@ -29,6 +29,7 @@ export const tasks = pgTable("tasks", {
   aggressiveness: integer("aggressiveness").notNull().default(2),
   status: text("status").notNull().default("pending"),
   prNumber: integer("pr_number"),
+  jobId: text("job_id"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [

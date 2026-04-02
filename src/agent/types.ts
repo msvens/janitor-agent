@@ -73,7 +73,9 @@ export interface BacklogTask {
   aggressiveness: number;
   status: TaskStatus;
   created_at: string;
+  updated_at?: string;
   pr_number?: number;
+  job_id?: string;
 }
 
 export interface RepoBacklog {

@@ -198,7 +198,7 @@ export async function getTasksForRepo(
     .select()
     .from(schema.tasks)
     .where(conditions)
-    .orderBy(asc(schema.tasks.aggressiveness));
+    .orderBy(desc(schema.tasks.updatedAt));
 
   return rows.map(rowToTask);
 }
@@ -229,6 +229,7 @@ export async function updateTaskStatus(
   taskId: string,
   status: TaskStatus,
   prNumber?: number,
+  jobId?: string,
 ) {
   const db = getDb();
   const updates: Record<string, unknown> = {
@@ -236,6 +237,7 @@ export async function updateTaskStatus(
     updatedAt: new Date().toISOString(),
   };
   if (prNumber !== undefined) updates.prNumber = prNumber;
+  if (jobId !== undefined) updates.jobId = jobId;
 
   await db.update(schema.tasks)
     .set(updates)
@@ -323,7 +325,9 @@ function rowToTask(row: typeof schema.tasks.$inferSelect): BacklogTask {
     aggressiveness: row.aggressiveness,
     status: row.status as TaskStatus,
     pr_number: row.prNumber ?? undefined,
+    job_id: row.jobId ?? undefined,
     created_at: row.createdAt,
+    updated_at: row.updatedAt,
   };
 }
 

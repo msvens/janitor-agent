@@ -62,7 +62,7 @@ export async function RecentActivity() {
             >
               <span className={`text-lg ${color}`}>{icon}</span>
               <span className="text-xs text-gray-500 w-16 shrink-0">
-                {relativeTime(task.created_at)}
+                {relativeTime(task.updated_at ?? task.created_at)}
               </span>
               <span className="text-sm text-gray-300 flex-1 min-w-0 truncate">
                 <span className="font-medium">{task.title}</span>

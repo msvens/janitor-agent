@@ -29,8 +29,9 @@ export async function updateTaskStatus(
   taskId: string,
   status: TaskStatus,
   prNumber?: number,
+  jobId?: string,
 ): Promise<void> {
-  await db.updateTaskStatus(taskId, status, prNumber);
+  await db.updateTaskStatus(taskId, status, prNumber, jobId);
 }
 
 export function getNextTask(backlog: RepoBacklog): BacklogTask | undefined {

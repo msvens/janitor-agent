@@ -20,6 +20,7 @@ import {
 export interface ActionJobOptions {
   repo?: string;
   taskId?: string;
+  jobId?: string;
   dryRun?: boolean;
   onLog?: (msg: string) => void;
   signal?: AbortSignal;
@@ -32,7 +33,7 @@ export interface ActionJobResult {
 }
 
 export async function runActionJob(options: ActionJobOptions = {}): Promise<ActionJobResult> {
-  const { repo: repoFilter, taskId: targetTaskId, dryRun = false, onLog, signal } = options;
+  const { repo: repoFilter, taskId: targetTaskId, jobId: currentJobId, dryRun = false, onLog, signal } = options;
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
 
   // Always reconcile first to catch merged/closed PRs
@@ -83,7 +84,7 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
     }
 
     log(`Executing task "${task.title}" for ${repoConfig.name}`);
-    await updateTaskStatus(repoConfig.name, task.id, "in_progress");
+    await updateTaskStatus(repoConfig.name, task.id, "in_progress", undefined, currentJobId);
 
     log(`Cloning ${repoConfig.name}...`);
     const branchName = `janitor/${task.id}`;
