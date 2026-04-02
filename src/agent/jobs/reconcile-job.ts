@@ -2,7 +2,7 @@ import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { findTaskByPR, updateTaskStatus } from "../backlog";
 import { addressComments } from "../agent";
-import { getSettings } from "../../db/index";
+import { getSettings, updatePRStatus } from "../../db/index";
 import {
   cloneRepo,
   cleanupRepo,
@@ -49,14 +49,15 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
         pr.last_checked = new Date().toISOString();
         remaining.push(pr);
       } else {
-        log(`PR #${pr.pr_number} in ${pr.repo} is ${status.state}, removing from tracking`);
+        const prStatus = status.state === "MERGED" ? "merged" : "closed";
+        log(`PR #${pr.pr_number} in ${pr.repo} is ${status.state}`);
+        await updatePRStatus(pr.repo, pr.pr_number, prStatus);
         const task = await findTaskByPR(pr.repo, pr.pr_number);
         if (task) {
-          const newStatus = status.state === "MERGED" ? "completed" : "failed";
-          await updateTaskStatus(pr.repo, task.id, newStatus);
-          log(`Marked task "${task.title}" as ${newStatus}`);
+          const taskStatus = status.state === "MERGED" ? "completed" : "failed";
+          await updateTaskStatus(pr.repo, task.id, taskStatus);
+          log(`Marked task "${task.title}" as ${taskStatus}`);
         }
-        // Clean up remote branch (don't rely on repo's auto-delete setting)
         await deleteRemoteBranch(pr.repo, pr.branch);
         reconciled++;
       }

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getAllRepos, getTasksForRepo, getTrackedPRs } from "@/db/index";
 import { RunButton } from "@/components/jobs/run-button";
+import { TodayStats } from "@/components/dashboard/today-stats";
+import { RecentActivity } from "@/components/dashboard/recent-activity";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +35,8 @@ export default async function DashboardPage() {
           <RunButton type="reconcile" label="Reconcile" className="bg-gray-700 hover:bg-gray-600 text-white" />
         </div>
       </div>
+
+      <TodayStats />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {repoData.map((repo) => (
@@ -80,8 +84,10 @@ export default async function DashboardPage() {
       </div>
 
       {repos.length === 0 && (
-        <p className="text-gray-500">No repos configured. Edit config.yaml to add repos.</p>
+        <p className="text-gray-500">No repos configured. Add repos in the Config page.</p>
       )}
+
+      <RecentActivity />
     </div>
   );
 }

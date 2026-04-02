@@ -44,6 +44,7 @@ export const trackedPrs = pgTable("tracked_prs", {
   prNumber: integer("pr_number").notNull(),
   branch: text("branch").notNull(),
   taskId: text("task_id").references(() => tasks.id),
+  status: text("status").notNull().default("open"), // open, merged, closed
   createdAt: text("created_at").notNull(),
   lastChecked: text("last_checked").notNull(),
 }, (table) => [
