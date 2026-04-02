@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { getTasksForRepo, listJobs } from "@/db/index";
+import { getTasksForRepo, getLatestJobForTask } from "@/db/index";
 import { TaskStatusSelect } from "@/components/backlogs/task-status-select";
 import { RunTaskButton } from "@/components/backlogs/run-task-button";
 import { RunButton } from "@/components/jobs/run-button";
@@ -14,6 +14,15 @@ export default async function RepoBacklogPage({
   const { repo } = await params;
   const repoName = decodeURIComponent(repo).replace("-", "/");
   const tasks = await getTasksForRepo(repoName);
+
+  // Look up latest job for in-progress tasks
+  const taskJobMap = new Map<string, string>();
+  for (const task of tasks) {
+    if (task.status === "in_progress") {
+      const job = await getLatestJobForTask(task.id);
+      if (job) taskJobMap.set(task.id, job.id);
+    }
+  }
 
   return (
     <div>
@@ -41,7 +50,10 @@ export default async function RepoBacklogPage({
                   <RunTaskButton taskId={task.id} repo={task.repo} />
                 )}
                 {task.status === "in_progress" && (
-                  <Link href="/jobs" className="text-xs text-blue-400 hover:underline">
+                  <Link
+                    href={taskJobMap.has(task.id) ? `/jobs/${taskJobMap.get(task.id)}` : "/jobs"}
+                    className="text-xs text-blue-400 hover:underline"
+                  >
                     View progress
                   </Link>
                 )}

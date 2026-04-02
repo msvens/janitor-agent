@@ -31,7 +31,11 @@ function relativeTime(iso: string): string {
 }
 
 export async function RecentActivity() {
-  const jobs = await listJobs(10);
+  const allJobs = await listJobs(20);
+  // Filter out jobs that were just killed by server restart with no real work done
+  const jobs = allJobs
+    .filter((j) => !(j.error === "Server restarted" && j.costUsd === 0))
+    .slice(0, 10);
 
   if (jobs.length === 0) {
     return (

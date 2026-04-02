@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import "@/lib/init";
-import { createJob, updateJob, getSettings, updateSettings } from "@/db/index";
+import { createJob, updateJob, getSettings, updateSettings, addJobStep } from "@/db/index";
 import { runPlanJob } from "@/agent/jobs/plan-job";
 import { runActionJob } from "@/agent/jobs/action-job";
 import { runReconcileJob } from "@/agent/jobs/reconcile-job";
@@ -114,6 +114,7 @@ class JobManager extends EventEmitter {
 
     await createJob({ id: jobId, type, repo, taskId });
 
+    let stepCounter = 0;
     const onLog = (msg: string) => {
       const logs = this.jobLogs.get(jobId);
       if (logs) logs.push(msg);
@@ -125,6 +126,16 @@ class JobManager extends EventEmitter {
       };
       this.emit(`job:${jobId}`, event);
       this.emit("job:log", event);
+
+      // Persist to DB for replay after server restart
+      stepCounter++;
+      addJobStep({
+        jobId,
+        stepNumber: stepCounter,
+        toolCalls: "[]",
+        toolResults: "[]",
+        text: msg,
+      }).catch(() => {}); // don't fail the job if DB write fails
     };
 
     // Fire-and-forget
