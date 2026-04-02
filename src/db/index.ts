@@ -257,6 +257,50 @@ export async function findTaskByPR(
   return rowToTask(rows[0]!);
 }
 
+export async function getRecentTasks(limit = 10): Promise<BacklogTask[]> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.tasks)
+    .where(
+      and(
+        // Only show tasks that have been acted on (not just pending)
+        // in_progress = currently being worked on or has open PR
+        // completed = PR merged
+        // failed/skipped = attempted but didn't work
+      ),
+    )
+    .orderBy(desc(schema.tasks.updatedAt))
+    .limit(limit);
+  // Filter out pending tasks (they haven't been acted on)
+  return rows.filter((r) => r.status !== "pending").map(rowToTask);
+}
+
+export async function getTaskStats() {
+  const db = getDb();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const todayStr = todayStart.toISOString();
+
+  const allTasks = await db.select().from(schema.tasks);
+  const todayTasks = allTasks.filter((t) => t.updatedAt >= todayStr && t.status !== "pending");
+
+  // Get today's cost from jobs
+  const allJobs = await db.select().from(schema.jobs);
+  const todayJobs = allJobs.filter((j) => j.startedAt >= todayStr && j.type === "action");
+  const totalCost = todayJobs.reduce((sum, j) => sum + (j.costUsd ?? 0), 0);
+
+  return {
+    today: {
+      completed: todayTasks.filter((t) => t.status === "completed").length,
+      in_progress: todayTasks.filter((t) => t.status === "in_progress").length,
+      failed: todayTasks.filter((t) => t.status === "failed" || t.status === "skipped").length,
+      total: todayTasks.length,
+      totalCost,
+    },
+  };
+}
+
 export async function deleteTask(taskId: string) {
   const db = getDb();
   await db.delete(schema.tasks).where(eq(schema.tasks.id, taskId));

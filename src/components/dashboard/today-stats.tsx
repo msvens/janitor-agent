@@ -1,15 +1,16 @@
-import { getJobStats } from "@/db/index";
+import { getTaskStats } from "@/db/index";
 import {
   CheckCircleIcon,
   XCircleIcon,
   CurrencyDollarIcon,
+  ArrowPathIcon,
   BoltIcon,
 } from "@heroicons/react/24/outline";
 
 export async function TodayStats() {
-  const { today } = await getJobStats();
+  const { today } = await getTaskStats();
 
-  if (today.totalJobs === 0) {
+  if (today.total === 0) {
     return null;
   }
 
@@ -18,12 +19,18 @@ export async function TodayStats() {
       <span className="text-xs text-gray-500 uppercase tracking-wide">Today</span>
       <div className="flex items-center gap-1.5 text-sm">
         <BoltIcon className="w-4 h-4 text-gray-400" />
-        <span className="text-gray-300">{today.totalJobs} jobs</span>
+        <span className="text-gray-300">{today.total} tasks</span>
       </div>
       {today.completed > 0 && (
         <div className="flex items-center gap-1.5 text-sm">
           <CheckCircleIcon className="w-4 h-4 text-green-400" />
           <span className="text-green-400">{today.completed} completed</span>
+        </div>
+      )}
+      {today.in_progress > 0 && (
+        <div className="flex items-center gap-1.5 text-sm">
+          <ArrowPathIcon className="w-4 h-4 text-blue-400" />
+          <span className="text-blue-400">{today.in_progress} in progress</span>
         </div>
       )}
       {today.failed > 0 && (

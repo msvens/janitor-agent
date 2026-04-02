@@ -1,17 +1,11 @@
 import Link from "next/link";
-import { listJobs } from "@/db/index";
+import { getRecentTasks } from "@/db/index";
 
 const statusIcons: Record<string, { icon: string; color: string }> = {
   completed: { icon: "✓", color: "text-green-400" },
+  in_progress: { icon: "⟳", color: "text-blue-400" },
   failed: { icon: "✗", color: "text-red-400" },
-  aborted: { icon: "⊘", color: "text-yellow-400" },
-  running: { icon: "⟳", color: "text-blue-400" },
-};
-
-const typeLabels: Record<string, string> = {
-  plan: "Planning",
-  action: "Action",
-  reconcile: "Reconcile",
+  skipped: { icon: "⊘", color: "text-yellow-400" },
 };
 
 function relativeTime(iso: string): string {
@@ -30,19 +24,24 @@ function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
-export async function RecentActivity() {
-  const allJobs = await listJobs(30);
-  // Filter: hide reconcile jobs and zero-cost aborted jobs (server restarts)
-  const jobs = allJobs
-    .filter((j) => j.type !== "reconcile")
-    .filter((j) => !(j.status === "aborted" && j.costUsd === 0))
-    .slice(0, 10);
+function statusLabel(status: string): string {
+  switch (status) {
+    case "completed": return "Completed";
+    case "in_progress": return "In progress";
+    case "failed": return "Failed";
+    case "skipped": return "Skipped";
+    default: return status;
+  }
+}
 
-  if (jobs.length === 0) {
+export async function RecentActivity() {
+  const tasks = await getRecentTasks(10);
+
+  if (tasks.length === 0) {
     return (
       <div className="mt-8">
         <h3 className="text-lg font-semibold mb-3">Recent Activity</h3>
-        <p className="text-sm text-gray-500">No jobs have been run yet.</p>
+        <p className="text-sm text-gray-500">No tasks have been executed yet.</p>
       </div>
     );
   }
@@ -51,42 +50,31 @@ export async function RecentActivity() {
     <div className="mt-8">
       <h3 className="text-lg font-semibold mb-3">Recent Activity</h3>
       <div className="bg-gray-900 border border-gray-800 rounded-lg divide-y divide-gray-800/50">
-        {jobs.map((job) => {
-          const { icon, color } = statusIcons[job.status] ?? statusIcons.completed!;
-          const typeLabel = typeLabels[job.type] ?? job.type;
+        {tasks.map((task) => {
+          const { icon, color } = statusIcons[task.status] ?? statusIcons.completed!;
+          const repoParam = task.repo.replace("/", "-");
 
           return (
             <Link
-              key={job.id}
-              href={`/jobs/${job.id}`}
+              key={task.id}
+              href={`/backlogs/${repoParam}`}
               className="flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors"
             >
               <span className={`text-lg ${color}`}>{icon}</span>
               <span className="text-xs text-gray-500 w-16 shrink-0">
-                {relativeTime(job.startedAt)}
+                {relativeTime(task.created_at)}
               </span>
-              <span className="text-sm text-gray-300 flex-1 min-w-0">
-                <span className="font-medium">{typeLabel}</span>
-                {job.repo && (
-                  <span className="text-gray-500 ml-1">({job.repo})</span>
-                )}
-                {job.error && (
-                  <span className="text-red-400 ml-2 truncate">— {job.error}</span>
-                )}
+              <span className="text-sm text-gray-300 flex-1 min-w-0 truncate">
+                <span className="font-medium">{task.title}</span>
+                <span className="text-gray-500 ml-1">({task.repo})</span>
               </span>
               <div className="flex items-center gap-3 shrink-0">
-                {job.costUsd > 0 && (
-                  <span className="text-xs text-gray-500">${job.costUsd.toFixed(2)}</span>
+                {task.pr_number && (
+                  <span className="text-xs text-blue-400">PR #{task.pr_number}</span>
                 )}
-                {job.finishedAt && (
-                  <span className="text-xs text-gray-600">
-                    {Math.round(
-                      (new Date(job.finishedAt).getTime() -
-                        new Date(job.startedAt).getTime()) /
-                        1000,
-                    )}s
-                  </span>
-                )}
+                <span className={`text-xs ${color}`}>
+                  {statusLabel(task.status)}
+                </span>
               </div>
             </Link>
           );
