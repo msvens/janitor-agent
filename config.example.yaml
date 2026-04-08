@@ -15,3 +15,5 @@ claude:
 ollama:
   host: http://localhost:11434
   model: qwen3-coder
+
+# Authentication: see .env.local (generate with: pnpm run auth:init <password>)

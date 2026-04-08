@@ -13,12 +13,14 @@
     "test:watch": "jest --watch",
     "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build",
     "db:push": "drizzle-kit push",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:seed": "tsx src/db/seed.ts",
+    "auth:init": "tsx src/scripts/hash-password.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
     "@heroicons/react": "^2.2.0",
     "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.2",
     "next": "^16.2.1",
     "ollama": "^0.6.3",
     "pg": "^8.20.0",
