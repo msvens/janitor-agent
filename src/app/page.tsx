@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getAllRepos, getTasksForRepo, getTrackedPRs } from "@/db/index";
 import { RunButton } from "@/components/jobs/run-button";
 import { TodayStats } from "@/components/dashboard/today-stats";
-import { RecentActivity } from "@/components/dashboard/recent-activity";
+import { EventFeed } from "@/components/event-feed";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +87,10 @@ export default async function DashboardPage() {
         <p className="text-gray-500">No repos configured. Add repos in the Config page.</p>
       )}
 
-      <RecentActivity />
+      <div className="mt-8">
+        <h3 className="text-lg font-semibold mb-3">Recent Activity</h3>
+        <EventFeed filter="tasks-only" limit={10} />
+      </div>
     </div>
   );
 }

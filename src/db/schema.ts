@@ -63,6 +63,7 @@ export const jobs = pgTable("jobs", {
   startedAt: text("started_at").notNull(),
   finishedAt: text("finished_at"),
   costUsd: real("cost_usd").notNull().default(0),
+  summary: text("summary"),
   error: text("error"),
 }, (table) => [
   index("idx_jobs_status").on(table.status),

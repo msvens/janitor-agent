@@ -1,7 +1,7 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { loadBacklog, getNextTask, updateTaskStatus } from "../backlog";
-import { getTask, getSettings, getAllRepoConfigs } from "../../db/index";
+import { getTask, getSettings, getAllRepoConfigs, updateJob } from "../../db/index";
 import { executeTask } from "../action";
 import { runReconcileJob } from "./reconcile-job";
 import {
@@ -85,6 +85,9 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
 
     log(`Executing task "${task.title}" for ${repoConfig.name}`);
     await updateTaskStatus(repoConfig.name, task.id, "in_progress", undefined, currentJobId);
+    if (currentJobId) {
+      await updateJob(currentJobId, { summary: `${task.title} (${repoConfig.name})` });
+    }
 
     log(`Cloning ${repoConfig.name}...`);
     const branchName = `janitor/${task.id}`;

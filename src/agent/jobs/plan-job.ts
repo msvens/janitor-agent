@@ -2,10 +2,11 @@ import { loadConfig } from "../config";
 import { loadBacklog, addTasks } from "../backlog";
 import { planRepo } from "../planner";
 import { ensureWorkspace } from "../github";
-import { getSettings, getAllRepoConfigs } from "../../db/index";
+import { getSettings, getAllRepoConfigs, updateJob } from "../../db/index";
 
 export interface PlanJobOptions {
   repo?: string;
+  jobId?: string;
   onLog?: (msg: string) => void;
   signal?: AbortSignal;
 }
@@ -16,7 +17,7 @@ export interface PlanJobResult {
 }
 
 export async function runPlanJob(options: PlanJobOptions = {}): Promise<PlanJobResult> {
-  const { repo: repoFilter, onLog, signal } = options;
+  const { repo: repoFilter, jobId: currentJobId, onLog, signal } = options;
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
 
   const config = await loadConfig();
@@ -63,8 +64,14 @@ export async function runPlanJob(options: PlanJobOptions = {}): Promise<PlanJobR
         await addTasks(repoConfig.name, tasks);
         totalTasksAdded += tasks.length;
         log(`Added ${tasks.length} tasks to backlog for ${repoConfig.name}`);
+        if (currentJobId) {
+          await updateJob(currentJobId, { summary: `Found ${tasks.length} tasks for ${repoConfig.name}` });
+        }
       } else {
         log(`No tasks found for ${repoConfig.name}`);
+        if (currentJobId) {
+          await updateJob(currentJobId, { summary: `No tasks found for ${repoConfig.name}` });
+        }
       }
     } catch (err) {
       log(`Error planning ${repoConfig.name}: ${err}`);

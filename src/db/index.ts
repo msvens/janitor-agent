@@ -455,19 +455,8 @@ export async function loadState(): Promise<State> {
 }
 
 export async function saveState(state: State) {
-  // Update open PRs — mark missing ones as closed, add new ones
-  const db = getDb();
-  const currentOpen = await getOpenPRs();
-  const newPrKeys = new Set(state.open_prs.map((p) => `${p.repo}:${p.pr_number}`));
-
-  // Close PRs no longer in the open list
-  for (const pr of currentOpen) {
-    if (!newPrKeys.has(`${pr.repo}:${pr.pr_number}`)) {
-      await updatePRStatus(pr.repo, pr.pr_number, "closed");
-    }
-  }
-
-  // Add new PRs
+  // Only add new PRs — don't close PRs based on this snapshot.
+  // PR status changes are handled explicitly by reconcile via updatePRStatus().
   for (const pr of state.open_prs) {
     await addTrackedPR(pr);
   }
@@ -496,7 +485,7 @@ export async function createJob(job: {
 
 export async function updateJob(
   jobId: string,
-  updates: { status?: string; finishedAt?: string; costUsd?: number; error?: string },
+  updates: { status?: string; finishedAt?: string; costUsd?: number; summary?: string; error?: string },
 ) {
   const db = getDb();
   await db.update(schema.jobs).set(updates).where(eq(schema.jobs.id, jobId));
@@ -508,9 +497,21 @@ export async function getJob(jobId: string) {
   return rows[0] ?? null;
 }
 
-export async function listJobs(limit = 20) {
+export async function listJobs(limit = 20, filter?: "tasks-only" | "all") {
   const db = getDb();
-  return db.select().from(schema.jobs).orderBy(desc(schema.jobs.startedAt)).limit(limit);
+  const conditions = filter === "tasks-only"
+    ? and(
+        eq(schema.jobs.status, schema.jobs.status), // always true placeholder
+      )
+    : undefined;
+
+  const allJobs = await db.select().from(schema.jobs).orderBy(desc(schema.jobs.startedAt)).limit(limit * 2);
+
+  const filtered = filter === "tasks-only"
+    ? allJobs.filter((j) => j.type === "action" || j.type === "plan")
+    : allJobs;
+
+  return filtered.slice(0, limit);
 }
 
 export async function getJobStats() {

@@ -2,7 +2,7 @@ import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { findTaskByPR, updateTaskStatus } from "../backlog";
 import { addressComments } from "../agent";
-import { getSettings, updatePRStatus } from "../../db/index";
+import { getSettings, updatePRStatus, updateJob } from "../../db/index";
 import {
   cloneRepo,
   cleanupRepo,
@@ -15,6 +15,7 @@ import {
 import type { TrackedPR } from "../types";
 
 export interface ReconcileJobOptions {
+  jobId?: string;
   onLog?: (msg: string) => void;
   signal?: AbortSignal;
 }
@@ -26,7 +27,7 @@ export interface ReconcileJobResult {
 }
 
 export async function runReconcileJob(options: ReconcileJobOptions = {}): Promise<ReconcileJobResult> {
-  const { onLog, signal } = options;
+  const { jobId: currentJobId, onLog, signal } = options;
   const log = onLog ?? ((msg: string) => console.log(`[${new Date().toISOString()}] ${msg}`));
 
   const config = await loadConfig();
@@ -111,6 +112,15 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
   }
 
   await saveState(state);
+
+  if (currentJobId) {
+    const parts = [];
+    if (reconciled > 0) parts.push(`${reconciled} PR${reconciled > 1 ? "s" : ""} resolved`);
+    if (commentsHandled > 0) parts.push(`${commentsHandled} comment${commentsHandled > 1 ? "s" : ""} handled`);
+    if (parts.length === 0) parts.push(`Checked ${state.open_prs.length} open PRs`);
+    await updateJob(currentJobId, { summary: parts.join(", ") });
+  }
+
   log("Reconcile done");
   return { reconciled, commentsHandled, costUsd: totalCost };
 }
