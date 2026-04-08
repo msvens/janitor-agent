@@ -10,6 +10,7 @@ tsconfig.tsbuildinfo
 
 # Personal config (copy config.example.yaml to config.yaml and edit)
 config.yaml
+.env.local
 
 # Working notes
 FINDINGS.md

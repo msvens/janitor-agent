@@ -57,6 +57,9 @@ Controls both the type of changes AND the task size:
 | `GH_TOKEN` | Server only | GitHub token for `gh` CLI (not needed locally if `gh auth login` is done) |
 | `DATABASE_URL` | No | PostgreSQL connection (default: `postgresql://localhost:5432/janitor`) |
 | `JANITOR_CONFIG` | No | Custom config file path |
+| `JANITOR_USERNAME` | Yes | Login username (in `.env.local`) |
+| `JANITOR_PASSWORD` | Yes | Login password (in `.env.local`) |
+| `JANITOR_JWT_SECRET` | Yes | JWT signing secret (in `.env.local`, generate with `pnpm run auth:init`) |
 
 ## Setup
 
@@ -74,6 +77,10 @@ createdb janitor
 # 4. Create config file
 cp config.example.yaml ~/.janitor/config.yaml
 # Edit with your database URL, Claude model, Ollama settings
+
+# 5. Set up authentication
+pnpm run auth:init yourpassword
+# Copy the output into .env.local
 
 # 5. Push database schema
 pnpm run db:push

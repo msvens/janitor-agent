@@ -19,7 +19,7 @@ function findConfigPath(): string {
     if (existsSync(path)) return path;
   }
 
-  return candidates[0]!; // default to ~/.janitor/config.yaml
+  return candidates[0]!;
 }
 
 export const CONFIG_PATH = findConfigPath();
@@ -29,7 +29,6 @@ export async function loadConfig(): Promise<Config> {
   try {
     raw = await readFile(CONFIG_PATH, "utf-8");
   } catch {
-    // Return defaults if no config file found
     return {
       database_url: process.env.DATABASE_URL ?? "postgresql://localhost:5432/janitor",
       port: 3003,
