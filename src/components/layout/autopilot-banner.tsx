@@ -1,39 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PlayIcon, StopIcon } from "@heroicons/react/24/solid";
+import { useAppStatus } from "@/components/status-provider";
 
 export function AutopilotBanner() {
-  const [active, setActive] = useState(false);
-  const [jobRunning, setJobRunning] = useState(false);
+  const { autopilotActive: active, jobRunning } = useAppStatus();
   const [toggling, setToggling] = useState(false);
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await fetch("/api/autopilot");
-        const data = await res.json();
-        setActive(data.active);
-        setJobRunning(data.jobRunning);
-      } catch {
-        // ignore
-      }
-    };
-    check();
-    const interval = setInterval(check, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   async function toggle() {
     setToggling(true);
     try {
-      const res = await fetch("/api/autopilot", {
+      await fetch("/api/autopilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: active ? "stop" : "start" }),
       });
-      const data = await res.json();
-      setActive(data.active);
     } catch {
       // ignore
     } finally {

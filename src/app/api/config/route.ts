@@ -45,6 +45,8 @@ export async function PUT(request: NextRequest) {
           branch: repo.branch ?? "main",
           installCommand: repo.install_command,
           testCommand: repo.test_command,
+          planPromptId: repo.plan_prompt_id || null,
+          actionPromptId: repo.action_prompt_id || null,
         });
       }
     }

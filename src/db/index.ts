@@ -88,6 +88,110 @@ export async function getSetting<K extends keyof Settings>(key: K): Promise<Sett
   }
 }
 
+// --- Prompts ---
+
+export type PromptType = "plan" | "action" | "fix" | "review";
+
+export interface Prompt {
+  id: string;
+  name: string;
+  type: PromptType;
+  content: string;
+  description: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getAllPrompts(): Promise<Prompt[]> {
+  const db = getDb();
+  const rows = await db.select().from(schema.prompts).orderBy(schema.prompts.type, schema.prompts.name);
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type as PromptType,
+    content: r.content,
+    description: r.description,
+    is_default: r.isDefault,
+    created_at: r.createdAt,
+    updated_at: r.updatedAt,
+  }));
+}
+
+export async function getPrompt(id: string): Promise<Prompt | null> {
+  const db = getDb();
+  const rows = await db.select().from(schema.prompts).where(eq(schema.prompts.id, id));
+  if (rows.length === 0) return null;
+  const r = rows[0]!;
+  return {
+    id: r.id, name: r.name, type: r.type as PromptType, content: r.content,
+    description: r.description, is_default: r.isDefault, created_at: r.createdAt, updated_at: r.updatedAt,
+  };
+}
+
+export async function getDefaultPrompt(type: PromptType): Promise<Prompt | null> {
+  const db = getDb();
+  const rows = await db.select().from(schema.prompts)
+    .where(and(eq(schema.prompts.type, type), eq(schema.prompts.isDefault, true)))
+    .limit(1);
+  if (rows.length === 0) return null;
+  const r = rows[0]!;
+  return {
+    id: r.id, name: r.name, type: r.type as PromptType, content: r.content,
+    description: r.description, is_default: r.isDefault, created_at: r.createdAt, updated_at: r.updatedAt,
+  };
+}
+
+export async function getPromptForRepo(repoName: string, type: PromptType): Promise<Prompt | null> {
+  const repo = await getRepo(repoName);
+  if (repo) {
+    const promptId = type === "plan" ? repo.planPromptId : type === "action" ? repo.actionPromptId : null;
+    if (promptId) {
+      const prompt = await getPrompt(promptId);
+      if (prompt) return prompt;
+    }
+  }
+  return getDefaultPrompt(type);
+}
+
+export async function upsertPrompt(prompt: {
+  id: string;
+  name: string;
+  type: PromptType;
+  content: string;
+  description?: string;
+  is_default?: boolean;
+}) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  await db.insert(schema.prompts)
+    .values({
+      id: prompt.id,
+      name: prompt.name,
+      type: prompt.type,
+      content: prompt.content,
+      description: prompt.description ?? "",
+      isDefault: prompt.is_default ?? false,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: schema.prompts.id,
+      set: {
+        name: prompt.name,
+        content: prompt.content,
+        description: prompt.description ?? "",
+        isDefault: prompt.is_default ?? false,
+        updatedAt: now,
+      },
+    });
+}
+
+export async function deletePrompt(id: string) {
+  const db = getDb();
+  await db.delete(schema.prompts).where(eq(schema.prompts.id, id));
+}
+
 // --- Repos ---
 
 export async function upsertRepo(repo: {
@@ -96,6 +200,8 @@ export async function upsertRepo(repo: {
   branch: string;
   installCommand?: string;
   testCommand?: string;
+  planPromptId?: string | null;
+  actionPromptId?: string | null;
 }) {
   const db = getDb();
   await db.insert(schema.repos)
@@ -105,6 +211,8 @@ export async function upsertRepo(repo: {
       branch: repo.branch,
       installCommand: repo.installCommand ?? null,
       testCommand: repo.testCommand ?? null,
+      planPromptId: repo.planPromptId ?? null,
+      actionPromptId: repo.actionPromptId ?? null,
     })
     .onConflictDoUpdate({
       target: schema.repos.name,
@@ -113,6 +221,8 @@ export async function upsertRepo(repo: {
         branch: repo.branch,
         installCommand: repo.installCommand ?? null,
         testCommand: repo.testCommand ?? null,
+        planPromptId: repo.planPromptId ?? null,
+        actionPromptId: repo.actionPromptId ?? null,
       },
     });
 }
@@ -140,6 +250,8 @@ export function repoRowToConfig(row: typeof schema.repos.$inferSelect): RepoConf
     branch: row.branch,
     install_command: row.installCommand ?? undefined,
     test_command: row.testCommand ?? undefined,
+    plan_prompt_id: row.planPromptId ?? undefined,
+    action_prompt_id: row.actionPromptId ?? undefined,
   };
 }
 

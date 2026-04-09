@@ -4,6 +4,7 @@ import { createReadOnlyTools, type StepTracker } from "./tools";
 import { LEVEL_DESCRIPTIONS, estimateCost, getChatFn } from "./agent";
 import { runAgent, type StepInfo } from "./loop";
 import { PROMPTS_DIR } from "./paths";
+import { getPromptForRepo } from "../db/index";
 import type { BacklogTask, Config, Settings, RepoBacklog, RepoConfig } from "./types";
 
 const PLAN_PROMPT_PATH = resolve(PROMPTS_DIR, "plan.md");
@@ -100,7 +101,9 @@ export async function planRepo(
   existingBacklog: RepoBacklog,
   onLog: LogFn = console.log,
 ): Promise<{ tasks: BacklogTask[]; costUsd: number }> {
-  const template = await readFile(PLAN_PROMPT_PATH, "utf-8");
+  // Load prompt from DB (per-repo or default), fallback to file
+  const dbPrompt = await getPromptForRepo(repoConfig.name, "plan");
+  const template = dbPrompt?.content ?? await readFile(PLAN_PROMPT_PATH, "utf-8");
   const systemPrompt = buildPlanPrompt(repoConfig.aggressiveness, template, existingBacklog);
   const chatFn = getChatFn("claude", config, settings);
   const maxSteps = settings.planning_max_steps;
