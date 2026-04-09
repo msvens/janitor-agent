@@ -59,6 +59,7 @@ pnpm run db:seed      # Import legacy JSON backlogs
 
 ## Status and known limitations
 
+- **Turbopack dev crash (webpack workaround)**: Next.js 16.2.x Turbopack has a Map overflow bug in async hooks tracking ([vercel/next.js#91396](https://github.com/vercel/next.js/issues/91396)). The dev server crashes with `RangeError: Map maximum size exceeded` after minutes of use. Surfaced 2026-04-08 after adding auth middleware + configurable prompts (more modules/async per request hit the threshold). Fix: dev script uses `--webpack` flag. Production is unaffected. Watch [PR #91704](https://github.com/vercel/next.js/pull/91704) for the upstream fix — once merged, we can switch back to Turbopack.
 - **Transient error handling**: API overloaded (529) marks tasks as `failed`. Should retry.
 - `handleReviewComments` doesn't distinguish between already-addressed and new comments
 - Local LLM tool calling reliability varies by model — qwen3-coder is the most reliable
