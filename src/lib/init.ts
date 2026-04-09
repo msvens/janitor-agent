@@ -1,5 +1,6 @@
 import { loadConfig } from "@/agent/config";
 import { initDb, getDb } from "@/db/index";
+import { seedDefaultPrompts } from "@/db/seed-prompts";
 import * as schema from "@/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -18,6 +19,8 @@ async function initialize() {
   if (stale.length > 0) {
     console.log(`[init] Marked ${stale.length} interrupted job(s): ${stale.map((j) => j.id).join(", ")}`);
   }
+
+  await seedDefaultPrompts();
 }
 
 // Auto-initialize on import (for API routes)
