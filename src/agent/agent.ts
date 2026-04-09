@@ -142,6 +142,7 @@ export async function addressComments(
 ): Promise<number> {
   const { runAgent } = await import("./loop");
   const { createTools } = await import("./tools");
+  const { getDefaultPrompt } = await import("../db/index");
 
   const chatFn = createClaudeChatFn(config.claude.model);
   const tools = createTools(repoPath);
@@ -150,7 +151,8 @@ export async function addressComments(
     .map((c, i) => `Comment ${i + 1}:\n${c}`)
     .join("\n\n");
 
-  const systemPrompt = `You are a code maintenance agent. A reviewer left comments on your PR. Address them by making the requested changes. If a comment is not actionable (e.g., "looks good"), skip it.`;
+  const dbPrompt = await getDefaultPrompt("review");
+  const systemPrompt = dbPrompt?.content ?? `You are a code maintenance agent. A reviewer left comments on your PR. Address them by making the requested changes. If a comment is not actionable (e.g., "looks good"), skip it.`;
 
   const { usage } = await runAgent({
     chatFn,

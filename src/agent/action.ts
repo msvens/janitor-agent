@@ -2,9 +2,11 @@ import { createTools } from "./tools";
 import { selectBackend, getChatFn, maxStepsForBackend, estimateCost, TOOL_USAGE_HINT } from "./agent";
 import { runAgent, type ChatUsage, type StepInfo } from "./loop";
 import { runTests } from "./github";
+import { getPromptForRepo } from "../db/index";
 import type { AnalysisResult, BacklogTask, Config, Settings, RepoConfig, TaskChange } from "./types";
 
-const FIX_PROMPT = `You are a code maintenance agent. Your previous edits broke the build/tests.
+// Fallback prompts (used if DB has no prompts yet)
+const FALLBACK_FIX_PROMPT = `You are a code maintenance agent. Your previous edits broke the build/tests.
 
 ## Build/test output
 
@@ -22,22 +24,15 @@ const FIX_PROMPT = `You are a code maintenance agent. Your previous edits broke 
 8. Do NOT explore the repo, run git commands, or read unrelated files
 9. If the error is not caused by your changes, output "NOT_MY_FAULT" and stop`;
 
-function formatChanges(changes: TaskChange[]): string {
-  return changes
-    .map((c) => `- **${c.file}** (lines ${c.lines}): ${c.what}`)
-    .join("\n");
-}
+const FALLBACK_ACTION_PROMPT = `You are a code maintenance agent. Execute the following task.
 
-function buildTaskPrompt(task: BacklogTask, isOllama: boolean): string {
-  let prompt = `You are a code maintenance agent. Execute the following task.
+## Task: {{TASK_TITLE}}
 
-## Task: ${task.title}
-
-${task.description}
+{{TASK_DESCRIPTION}}
 
 ## Changes to make
 
-${formatChanges(task.changes)}
+{{CHANGES}}
 
 ## Instructions
 
@@ -46,6 +41,21 @@ ${formatChanges(task.changes)}
 3. Handle dependencies between changes (e.g., if you remove an import, also replace its usage)
 4. After making changes, use grep to verify you caught ALL instances of the pattern — if the task says "replace X with Y" and you find more instances than listed, fix those too
 5. After making all changes, stop — do not explore unrelated files or make unrelated changes`;
+
+function formatChanges(changes: TaskChange[]): string {
+  return changes
+    .map((c) => `- **${c.file}** (lines ${c.lines}): ${c.what}`)
+    .join("\n");
+}
+
+async function buildTaskPrompt(task: BacklogTask, isOllama: boolean): Promise<string> {
+  const dbPrompt = await getPromptForRepo(task.repo, "action");
+  const template = dbPrompt?.content ?? FALLBACK_ACTION_PROMPT;
+
+  let prompt = template
+    .replace(/\{\{TASK_TITLE\}\}/g, task.title)
+    .replace("{{TASK_DESCRIPTION}}", task.description)
+    .replace("{{CHANGES}}", formatChanges(task.changes));
 
   if (isOllama) {
     prompt += TOOL_USAGE_HINT;
@@ -95,7 +105,7 @@ export async function executeTask(
 
   onLog(`Task: "${task.title}" — ${task.changes.length} changes (backend=${backend})`);
 
-  const systemPrompt = buildTaskPrompt(task, backend === "ollama");
+  const systemPrompt = await buildTaskPrompt(task, backend === "ollama");
   const tools = createTools(repoPath);
   const stepLogger = makeStepLogger(onLog);
 
@@ -181,7 +191,9 @@ async function fixTestFailures(
   settings: Settings,
   onLog: LogFn = console.log,
 ): Promise<{ usage: ChatUsage }> {
-  const prompt = FIX_PROMPT.replace("{{TEST_OUTPUT}}", testOutput.slice(0, 5000));
+  const dbPrompt = await getPromptForRepo("", "fix"); // fix prompt is global, not per-repo
+  const template = dbPrompt?.content ?? FALLBACK_FIX_PROMPT;
+  const prompt = template.replace("{{TEST_OUTPUT}}", testOutput.slice(0, 5000));
   const chatFn = getChatFn("claude", config, settings);
   const tools = createTools(repoPath);
   const stepLogger = makeStepLogger(onLog);

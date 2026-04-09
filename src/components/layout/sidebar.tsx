@@ -9,6 +9,7 @@ import {
   CodeBracketIcon,
   CogIcon,
   PlayIcon,
+  DocumentTextIcon,
   ArrowRightStartOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 
@@ -17,6 +18,7 @@ const nav = [
   { href: "/backlogs", label: "Backlogs", icon: QueueListIcon },
   { href: "/prs", label: "PRs", icon: CodeBracketIcon },
   { href: "/jobs", label: "Jobs", icon: PlayIcon },
+  { href: "/prompts", label: "Prompts", icon: DocumentTextIcon },
   { href: "/config", label: "Config", icon: CogIcon },
 ];
 

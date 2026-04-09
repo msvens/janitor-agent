@@ -9,6 +9,14 @@ interface RepoConfig {
   branch: string;
   install_command?: string;
   test_command?: string;
+  plan_prompt_id?: string;
+  action_prompt_id?: string;
+}
+
+interface Prompt {
+  id: string;
+  name: string;
+  type: string;
 }
 
 interface Settings {
@@ -77,11 +85,13 @@ export default function ConfigPage() {
   const [config, setConfig] = useState<BootstrapConfig | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [repos, setRepos] = useState<RepoConfig[]>([]);
+  const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    fetch("/api/prompts").then((r) => r.json()).then(setPrompts).catch(() => {});
     fetch("/api/config")
       .then((r) => r.json())
       .then((data) => {
@@ -123,7 +133,15 @@ export default function ConfigPage() {
   }
 
   function addRepo() {
-    setRepos([...repos, { name: "owner/repo", aggressiveness: 2, branch: "main" }]);
+    const defaultPlan = prompts.find((p) => p.type === "plan");
+    const defaultAction = prompts.find((p) => p.type === "action");
+    setRepos([...repos, {
+      name: "owner/repo",
+      aggressiveness: 2,
+      branch: "main",
+      plan_prompt_id: defaultPlan?.id,
+      action_prompt_id: defaultAction?.id,
+    }]);
   }
 
   function removeRepo(index: number) {
@@ -277,6 +295,32 @@ export default function ConfigPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <Input label="Install command" value={repo.install_command ?? ""} onChange={(v) => updateRepo(i, "install_command", v || undefined as unknown as string)} />
                   <Input label="Test command" value={repo.test_command ?? ""} onChange={(v) => updateRepo(i, "test_command", v || undefined as unknown as string)} />
+                </div>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Plan prompt</label>
+                    <select
+                      value={repo.plan_prompt_id ?? ""}
+                      onChange={(e) => updateRepo(i, "plan_prompt_id", e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100"
+                    >
+                      {prompts.filter((p) => p.type === "plan").map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-400 mb-1">Action prompt</label>
+                    <select
+                      value={repo.action_prompt_id ?? ""}
+                      onChange={(e) => updateRepo(i, "action_prompt_id", e.target.value)}
+                      className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100"
+                    >
+                      {prompts.filter((p) => p.type === "action").map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             ))}

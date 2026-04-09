@@ -1,10 +1,23 @@
-import { pgTable, text, integer, real, uniqueIndex, index, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, real, uniqueIndex, index, serial, boolean } from "drizzle-orm/pg-core";
 
 // --- Settings (key-value, runtime config from UI) ---
 
 export const settings = pgTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
+});
+
+// --- Prompts ---
+
+export const prompts = pgTable("prompts", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  type: text("type").notNull(),  // plan, action, fix, review
+  content: text("content").notNull(),
+  description: text("description").notNull().default(""),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 // --- Repos ---
@@ -16,6 +29,8 @@ export const repos = pgTable("repos", {
   installCommand: text("install_command"),
   testCommand: text("test_command"),
   lastPlanned: text("last_planned"),
+  planPromptId: text("plan_prompt_id").references(() => prompts.id),
+  actionPromptId: text("action_prompt_id").references(() => prompts.id),
 });
 
 // --- Tasks ---

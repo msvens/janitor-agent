@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAppStatus } from "@/components/status-provider";
 import type { JobType } from "@/lib/job-manager";
 
 const descriptions: Record<JobType, string> = {
@@ -21,24 +22,11 @@ export function RunButton({
   label: string;
   className?: string;
 }) {
+  const { jobRunning: busy } = useAppStatus();
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-
-  useEffect(() => {
-    const check = async () => {
-      try {
-        const res = await fetch("/api/autopilot");
-        const data = await res.json();
-        setBusy(data.jobRunning);
-      } catch { /* ignore */ }
-    };
-    check();
-    const interval = setInterval(check, 3000);
-    return () => clearInterval(interval);
-  }, []);
 
   function handleClick() {
     setError(null);

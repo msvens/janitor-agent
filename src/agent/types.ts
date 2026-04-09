@@ -31,6 +31,8 @@ export interface RepoConfig {
   branch: string;
   install_command?: string;
   test_command?: string;
+  plan_prompt_id?: string;
+  action_prompt_id?: string;
 }
 
 export interface TrackedPR {
