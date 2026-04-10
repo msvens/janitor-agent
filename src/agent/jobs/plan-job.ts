@@ -51,7 +51,7 @@ export async function runPlanJob(options: PlanJobOptions = {}): Promise<PlanJobR
 
     const repoDir = await ensureWorkspace(
       repoConfig.name,
-      settings.workspace_dir.replace("~", process.env.HOME ?? "~"),
+      config.workspace_dir.replace("~", process.env.HOME ?? "~"),
       repoConfig.branch,
     );
 

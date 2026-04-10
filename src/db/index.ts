@@ -46,7 +46,6 @@ const DEFAULT_SETTINGS: Settings = {
   ollama_max_steps: 15,
   claude_max_steps: 15,
   planning_max_steps: 25,
-  workspace_dir: "~/.janitor/workspaces",
   autopilot_enabled: false,
   autopilot_interval_minutes: 10,
 };

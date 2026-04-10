@@ -1,9 +1,10 @@
 export type Backend = "claude" | "ollama";
 
-// Bootstrap config (from config.yaml — connection info only)
+// Bootstrap config (from config.yaml — connection/deployment info)
 export interface Config {
   database_url: string;
   port: number;
+  workspace_dir: string;
   claude: { model: string };
   ollama: { host: string; model: string };
 }
@@ -19,7 +20,6 @@ export interface Settings {
   ollama_max_steps: number;
   claude_max_steps: number;
   planning_max_steps: number;
-  workspace_dir: string;
   autopilot_enabled: boolean;
   autopilot_interval_minutes: number;
 }

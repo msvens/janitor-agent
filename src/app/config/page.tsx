@@ -29,7 +29,6 @@ interface Settings {
   ollama_max_steps: number;
   claude_max_steps: number;
   planning_max_steps: number;
-  workspace_dir: string;
   autopilot_enabled: boolean;
   autopilot_interval_minutes: number;
 }
@@ -37,6 +36,7 @@ interface Settings {
 interface BootstrapConfig {
   database_url: string;
   port: number;
+  workspace_dir: string;
   claude: { model: string };
   ollama: { host: string; model: string };
 }
@@ -183,6 +183,7 @@ export default function ConfigPage() {
             <Input label="Port" value={config.port} onChange={() => {}} disabled />
             <Input label="Claude model" value={config.claude.model} onChange={() => {}} disabled />
             <Input label="Ollama model" value={config.ollama.model} onChange={() => {}} disabled />
+            <Input label="Workspace directory" value={config.workspace_dir} onChange={() => {}} disabled />
           </div>
         </section>
 
@@ -327,14 +328,6 @@ export default function ConfigPage() {
           </div>
         </section>
 
-        <section className="bg-gray-900 border border-gray-800 rounded-lg p-5">
-          <h3 className="font-semibold mb-3">Advanced</h3>
-          <Input
-            label="Workspace directory"
-            value={settings.workspace_dir}
-            onChange={(v) => setSettings({ ...settings, workspace_dir: v })}
-          />
-        </section>
       </div>
     </div>
   );

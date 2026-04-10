@@ -32,6 +32,7 @@ export async function loadConfig(): Promise<Config> {
     return {
       database_url: process.env.DATABASE_URL ?? "postgresql://localhost:5432/janitor",
       port: 3003,
+      workspace_dir: "~/.janitor/workspaces",
       claude: { model: "claude-sonnet-4-6" },
       ollama: { host: "http://localhost:11434", model: "qwen3-coder" },
     };
@@ -40,10 +41,12 @@ export async function loadConfig(): Promise<Config> {
   const parsed = parse(raw) as Record<string, unknown>;
   const claudeRaw = parsed.claude as Record<string, unknown> | undefined;
   const ollamaRaw = parsed.ollama as Record<string, unknown> | undefined;
+  const planningRaw = parsed.planning as Record<string, unknown> | undefined;
 
   return {
     database_url: process.env.DATABASE_URL ?? (parsed.database_url as string) ?? "postgresql://localhost:5432/janitor",
     port: (parsed.port as number) ?? 3003,
+    workspace_dir: (planningRaw?.workspace_dir as string) ?? (parsed.workspace_dir as string) ?? "~/.janitor/workspaces",
     claude: {
       model: (claudeRaw?.model as string) ?? "claude-sonnet-4-6",
     },
