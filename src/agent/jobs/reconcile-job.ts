@@ -2,7 +2,7 @@ import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { findTaskByPR, updateTaskStatus } from "../backlog";
 import { addressComments } from "../agent";
-import { getSettings, updatePRStatus, updateJob } from "../../db/index";
+import { getSettings, getRepoConfig, updatePRStatus, updateJob } from "../../db/index";
 import {
   cloneRepo,
   cleanupRepo,
@@ -11,6 +11,9 @@ import {
   checkPRStatus,
   getPRComments,
   deleteRemoteBranch,
+  installDeps,
+  runTests,
+  closePR,
 } from "../github";
 import type { TrackedPR } from "../types";
 
@@ -84,23 +87,59 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
         const comments = await getPRComments(pr.repo, pr.pr_number);
         if (comments.length === 0) continue;
 
-        log(`PR #${pr.pr_number} in ${pr.repo} has comments, addressing...`);
+        log(`PR #${pr.pr_number} in ${pr.repo} has ${comments.length} comment(s), addressing...`);
+        for (const c of comments) {
+          log(`  Comment: ${c.slice(0, 200)}`);
+        }
 
         const repoDir = await cloneRepo(pr.repo);
         try {
           const { execFile } = await import("node:child_process");
           const { promisify } = await import("node:util");
           const exec = promisify(execFile);
-          await exec("git", ["checkout", pr.branch], { cwd: repoDir });
+          await exec("git", ["fetch", "origin", pr.branch], { cwd: repoDir });
+          await exec("git", ["checkout", "-b", pr.branch, "FETCH_HEAD"], { cwd: repoDir });
 
-          const costUsd = await addressComments(repoDir, comments, config);
-          costBudget.remaining -= costUsd;
-          totalCost += costUsd;
+          // Install deps if configured
+          const repoConfig = await getRepoConfig(pr.repo);
+          if (repoConfig?.install_command) {
+            log(`Installing dependencies...`);
+            await installDeps(repoDir, repoConfig.install_command);
+          }
+
+          const result = await addressComments(repoDir, comments, config);
+          costBudget.remaining -= result.costUsd;
+          totalCost += result.costUsd;
+
+          log(`Agent done: ${result.steps} steps, cost: $${result.costUsd.toFixed(4)}`);
+          if (result.response) {
+            log(`Response: ${result.response.slice(0, 500)}`);
+          }
 
           if (await hasChanges(repoDir)) {
+            // Run tests before pushing
+            if (repoConfig?.test_command) {
+              log(`Running tests...`);
+              const testResult = await runTests(repoDir, repoConfig.test_command);
+              if (!testResult.passed) {
+                log(`Tests failed after addressing comments — closing PR`);
+                log(`Test output: ${testResult.output.slice(0, 2000)}`);
+                await closePR(pr.repo, pr.pr_number, "Closing — unable to address review feedback while keeping tests passing.");
+                await updatePRStatus(pr.repo, pr.pr_number, "closed");
+                const task = await findTaskByPR(pr.repo, pr.pr_number);
+                if (task) await updateTaskStatus(pr.repo, task.id, "skipped");
+                await deleteRemoteBranch(pr.repo, pr.branch);
+                log(`Closed PR #${pr.pr_number} and cleaned up branch`);
+                continue;
+              }
+              log(`Tests pass`);
+            }
+
             await commitAndPush(repoDir, pr.branch, "Address review comments");
             log(`Pushed fixes for PR #${pr.pr_number}`);
             commentsHandled++;
+          } else {
+            log(`No new changes needed for PR #${pr.pr_number}`);
           }
         } finally {
           await cleanupRepo(repoDir);

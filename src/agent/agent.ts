@@ -134,12 +134,18 @@ export function logStep(step: StepInfo) {
 
 // --- Review comment handling (always Claude) ---
 
+export interface AddressCommentsResult {
+  costUsd: number;
+  response: string;
+  steps: number;
+}
+
 export async function addressComments(
   repoPath: string,
   comments: string[],
   config: Config,
   abortController?: AbortController,
-): Promise<number> {
+): Promise<AddressCommentsResult> {
   const { runAgent } = await import("./loop");
   const { createTools } = await import("./tools");
   const { getDefaultPrompt } = await import("../db/index");
@@ -154,7 +160,7 @@ export async function addressComments(
   const dbPrompt = await getDefaultPrompt("review");
   const systemPrompt = dbPrompt?.content ?? `You are a code maintenance agent. A reviewer left comments on your PR. Address them by making the requested changes. If a comment is not actionable (e.g., "looks good"), skip it.`;
 
-  const { usage } = await runAgent({
+  const { text, usage, steps } = await runAgent({
     chatFn,
     system: systemPrompt,
     prompt: commentBlock,
@@ -163,5 +169,10 @@ export async function addressComments(
     signal: abortController?.signal,
   });
 
-  return estimateCost("claude", usage, config.claude.model);
+  return {
+    costUsd: estimateCost("claude", usage, config.claude.model),
+    response: text,
+    steps,
+  };
 }
+

@@ -186,6 +186,19 @@ export async function getOpenJanitorPRs(repo: string): Promise<number[]> {
   return prs.map((p) => p.number);
 }
 
+export async function closePR(
+  repo: string,
+  prNumber: number,
+  comment: string,
+): Promise<void> {
+  await exec("gh", [
+    "pr", "close", String(prNumber),
+    "--repo", repo,
+    "--comment", comment,
+  ]);
+  log(`Closed PR #${prNumber} in ${repo}`);
+}
+
 export async function getPRComments(
   repo: string,
   prNumber: number
