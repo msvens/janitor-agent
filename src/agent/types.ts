@@ -78,6 +78,7 @@ export interface BacklogTask {
   updated_at?: string;
   pr_number?: number;
   job_id?: string;
+  skip_reason?: string;
 }
 
 export interface RepoBacklog {

@@ -199,6 +199,26 @@ export async function closePR(
   log(`Closed PR #${prNumber} in ${repo}`);
 }
 
+export async function getPRCloseReason(
+  repo: string,
+  prNumber: number,
+): Promise<string | undefined> {
+  try {
+    const { stdout } = await exec("gh", [
+      "pr", "view", String(prNumber),
+      "--repo", repo,
+      "--json", "comments",
+    ]);
+    const data = JSON.parse(stdout);
+    const comments = data.comments as { body: string; createdAt: string }[];
+    if (!comments || comments.length === 0) return undefined;
+    // Return the last comment — typically the close reason
+    return comments[comments.length - 1]!.body;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getPRComments(
   repo: string,
   prNumber: number

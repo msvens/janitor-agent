@@ -4,7 +4,7 @@ import { createReadOnlyTools, type StepTracker } from "./tools";
 import { LEVEL_DESCRIPTIONS, estimateCost, getChatFn } from "./agent";
 import { runAgent, type StepInfo } from "./loop";
 import { PROMPTS_DIR } from "./paths";
-import { getPromptForRepo } from "../db/index";
+import { getPromptForRepo, getClosedPRsForRepo } from "../db/index";
 import type { BacklogTask, Config, Settings, RepoBacklog, RepoConfig } from "./types";
 
 const PLAN_PROMPT_PATH = resolve(PROMPTS_DIR, "plan.md");
@@ -23,34 +23,68 @@ function makeStepLogger(onLog: LogFn): (step: StepInfo) => void {
   };
 }
 
-function buildExistingTasksSection(backlog: RepoBacklog): string {
-  const existing = backlog.tasks.filter(
+async function buildExistingTasksSection(backlog: RepoBacklog): Promise<string> {
+  const parts: string[] = [];
+
+  // Active tasks — don't duplicate
+  const active = backlog.tasks.filter(
     (t) => t.status !== "failed" && t.status !== "skipped",
   );
-  if (existing.length === 0) return "";
-
-  const taskList = existing
-    .map((t) => `- "${t.title}" (${t.status})`)
-    .join("\n");
-
-  return `## Already Known Tasks
+  if (active.length > 0) {
+    const taskList = active
+      .map((t) => `- "${t.title}" (${t.status})`)
+      .join("\n");
+    parts.push(`## Already Known Tasks
 
 The following tasks have already been identified for this repo. Do NOT suggest these again — find NEW issues only.
 
-${taskList}`;
+${taskList}`);
+  }
+
+  // Dismissed tasks with reasons — learn from user feedback
+  const dismissed = backlog.tasks.filter(
+    (t) => t.status === "skipped" && t.skip_reason,
+  );
+  if (dismissed.length > 0) {
+    const dismissedList = dismissed
+      .map((t) => `- "${t.title}" — dismissed: ${t.skip_reason}`)
+      .join("\n");
+    parts.push(`## Dismissed Tasks
+
+The user has reviewed and dismissed these tasks. Do NOT suggest these or very similar tasks again. Consider the dismissal reasons when proposing new tasks.
+
+${dismissedList}`);
+  }
+
+  // Closed PRs with reasons — learn from past failures
+  const closedPRs = await getClosedPRsForRepo(backlog.repo);
+  const prsWithReasons = closedPRs.filter((pr) => pr.close_reason);
+  if (prsWithReasons.length > 0) {
+    const prList = prsWithReasons
+      .map((pr) => `- PR #${pr.pr_number} (${pr.branch}) — closed: ${pr.close_reason}`)
+      .join("\n");
+    parts.push(`## Closed PRs
+
+These PRs were previously created and closed. Learn from these outcomes — do NOT suggest tasks that would lead to the same issues.
+
+${prList}`);
+  }
+
+  return parts.join("\n\n");
 }
 
-function buildPlanPrompt(
+async function buildPlanPrompt(
   aggressiveness: number,
   template: string,
   backlog: RepoBacklog,
-): string {
+): Promise<string> {
   const levelDesc =
     LEVEL_DESCRIPTIONS[aggressiveness] ?? LEVEL_DESCRIPTIONS[2]!;
+  const existingSection = await buildExistingTasksSection(backlog);
   return template
     .replace("{{LEVEL}}", String(aggressiveness))
     .replace("{{LEVEL_DESCRIPTION}}", levelDesc)
-    .replace("{{EXISTING_TASKS}}", buildExistingTasksSection(backlog));
+    .replace("{{EXISTING_TASKS}}", existingSection);
 }
 
 function parsePlanResult(text: string): Omit<BacklogTask, "id" | "repo" | "status" | "created_at">[] {
@@ -104,7 +138,7 @@ export async function planRepo(
   // Load prompt from DB (per-repo or default), fallback to file
   const dbPrompt = await getPromptForRepo(repoConfig.name, "plan");
   const template = dbPrompt?.content ?? await readFile(PLAN_PROMPT_PATH, "utf-8");
-  const systemPrompt = buildPlanPrompt(repoConfig.aggressiveness, template, existingBacklog);
+  const systemPrompt = await buildPlanPrompt(repoConfig.aggressiveness, template, existingBacklog);
   const chatFn = getChatFn("claude", config, settings);
   const maxSteps = settings.planning_max_steps;
   const stepTracker: StepTracker = { current: 0, max: maxSteps };

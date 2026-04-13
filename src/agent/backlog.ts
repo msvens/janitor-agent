@@ -30,8 +30,9 @@ export async function updateTaskStatus(
   status: TaskStatus,
   prNumber?: number,
   jobId?: string,
+  skipReason?: string,
 ): Promise<void> {
-  await db.updateTaskStatus(taskId, status, prNumber, jobId);
+  await db.updateTaskStatus(taskId, status, prNumber, jobId, skipReason);
 }
 
 export function getNextTask(backlog: RepoBacklog): BacklogTask | undefined {

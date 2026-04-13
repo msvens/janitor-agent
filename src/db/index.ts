@@ -341,6 +341,7 @@ export async function updateTaskStatus(
   status: TaskStatus,
   prNumber?: number,
   jobId?: string,
+  skipReason?: string,
 ) {
   const db = getDb();
   const updates: Record<string, unknown> = {
@@ -349,6 +350,8 @@ export async function updateTaskStatus(
   };
   if (prNumber !== undefined) updates.prNumber = prNumber;
   if (jobId !== undefined) updates.jobId = jobId;
+  if (status === "skipped" && skipReason !== undefined) updates.skipReason = skipReason;
+  if (status !== "skipped") updates.skipReason = null;
 
   await db.update(schema.tasks)
     .set(updates)
@@ -437,6 +440,7 @@ function rowToTask(row: typeof schema.tasks.$inferSelect): BacklogTask {
     status: row.status as TaskStatus,
     pr_number: row.prNumber ?? undefined,
     job_id: row.jobId ?? undefined,
+    skip_reason: row.skipReason ?? undefined,
     created_at: row.createdAt,
     updated_at: row.updatedAt,
   };
@@ -460,11 +464,14 @@ export async function hasPendingTasks(repo: string): Promise<boolean> {
 }
 
 export async function addTasks(repo: string, newTasks: BacklogTask[]) {
-  const existing = new Set(
+  const pendingTitles = new Set(
     (await getTasksForRepo(repo, "pending")).map((t) => t.title),
   );
+  const skippedTitles = new Set(
+    (await getTasksForRepo(repo, "skipped")).map((t) => t.title),
+  );
   for (const task of newTasks) {
-    if (!existing.has(task.title)) {
+    if (!pendingTitles.has(task.title) && !skippedTitles.has(task.title)) {
       await addTask(task);
     }
   }
@@ -518,10 +525,12 @@ export async function addTrackedPR(pr: TrackedPR) {
     .onConflictDoNothing();
 }
 
-export async function updatePRStatus(repo: string, prNumber: number, status: string) {
+export async function updatePRStatus(repo: string, prNumber: number, status: string, closeReason?: string) {
   const db = getDb();
+  const updates: Record<string, unknown> = { status, lastChecked: new Date().toISOString() };
+  if (closeReason !== undefined) updates.closeReason = closeReason;
   await db.update(schema.trackedPrs)
-    .set({ status, lastChecked: new Date().toISOString() })
+    .set(updates)
     .where(
       and(
         eq(schema.trackedPrs.repo, repo),
@@ -552,6 +561,26 @@ export async function updatePRLastChecked(repo: string, prNumber: number) {
         eq(schema.trackedPrs.prNumber, prNumber),
       ),
     );
+}
+
+export interface ClosedPR {
+  repo: string;
+  pr_number: number;
+  branch: string;
+  close_reason?: string;
+}
+
+export async function getClosedPRsForRepo(repo: string): Promise<ClosedPR[]> {
+  const db = getDb();
+  const rows = await db.select().from(schema.trackedPrs)
+    .where(and(eq(schema.trackedPrs.repo, repo), eq(schema.trackedPrs.status, "closed")))
+    .orderBy(desc(schema.trackedPrs.createdAt));
+  return rows.map((row) => ({
+    repo: row.repo,
+    pr_number: row.prNumber,
+    branch: row.branch,
+    close_reason: row.closeReason ?? undefined,
+  }));
 }
 
 // --- State (compatibility layer) ---

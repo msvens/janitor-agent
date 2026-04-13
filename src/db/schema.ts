@@ -45,6 +45,7 @@ export const tasks = pgTable("tasks", {
   status: text("status").notNull().default("pending"),
   prNumber: integer("pr_number"),
   jobId: text("job_id"),
+  skipReason: text("skip_reason"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, (table) => [
@@ -61,6 +62,7 @@ export const trackedPrs = pgTable("tracked_prs", {
   branch: text("branch").notNull(),
   taskId: text("task_id").references(() => tasks.id),
   status: text("status").notNull().default("open"), // open, merged, closed
+  closeReason: text("close_reason"),
   createdAt: text("created_at").notNull(),
   lastChecked: text("last_checked").notNull(),
 }, (table) => [
