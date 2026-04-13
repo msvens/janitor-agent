@@ -34,7 +34,7 @@ export default async function JobDetailPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">
             <span className="capitalize">{job.type}</span> Job
@@ -66,7 +66,7 @@ export default async function JobDetailPage({
           <div className="px-4 py-2 border-b border-gray-800">
             <span className="text-sm font-medium capitalize">{job.status}</span>
           </div>
-          <div className="p-4 max-h-[600px] overflow-y-auto font-mono text-xs space-y-0.5">
+          <div className="p-4 max-h-[600px] overflow-y-auto overflow-x-auto font-mono text-xs space-y-0.5">
             {steps.map((step) => (
               <div key={step.id} className="text-gray-300 leading-relaxed">
                 <span className="text-gray-600 mr-2">

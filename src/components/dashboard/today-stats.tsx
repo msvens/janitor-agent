@@ -15,7 +15,7 @@ export async function TodayStats() {
   }
 
   return (
-    <div className="flex items-center gap-6 px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg mb-6">
+    <div className="flex flex-wrap items-center gap-3 sm:gap-6 px-3 sm:px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg mb-6">
       <span className="text-xs text-gray-500 uppercase tracking-wide">Today</span>
       <div className="flex items-center gap-1.5 text-sm">
         <BoltIcon className="w-4 h-4 text-gray-400" />

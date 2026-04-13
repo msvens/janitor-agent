@@ -5,13 +5,19 @@ import { join } from "node:path";
 // by setting env BEFORE importing. Use dynamic import + jest.resetModules.
 
 describe("loadConfig", () => {
-  const origEnv = process.env.JANITOR_CONFIG;
+  const origConfig = process.env.JANITOR_CONFIG;
+  const origDbUrl = process.env.DATABASE_URL;
 
   afterEach(() => {
-    if (origEnv !== undefined) {
-      process.env.JANITOR_CONFIG = origEnv;
+    if (origConfig !== undefined) {
+      process.env.JANITOR_CONFIG = origConfig;
     } else {
       delete process.env.JANITOR_CONFIG;
+    }
+    if (origDbUrl !== undefined) {
+      process.env.DATABASE_URL = origDbUrl;
+    } else {
+      delete process.env.DATABASE_URL;
     }
     jest.resetModules();
   });
@@ -42,6 +48,7 @@ ollama:
   model: deepseek-coder
 `);
 
+    delete process.env.DATABASE_URL;
     process.env.JANITOR_CONFIG = configPath;
     const { loadConfig } = await import("../config");
 

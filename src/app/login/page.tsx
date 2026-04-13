@@ -38,7 +38,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 bg-gray-950/50 backdrop-blur-sm flex items-center justify-center">
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 w-full max-w-sm">
         <h1 className="text-2xl font-bold text-gray-100 mb-6 text-center">
           Janitor Agent

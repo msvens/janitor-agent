@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/sidebar";
-import { AutopilotBanner } from "@/components/layout/autopilot-banner";
+import { MobileHeader } from "@/components/layout/mobile-header";
 import { StatusProvider } from "@/components/status-provider";
 
 const geist = Geist({ subsets: ["latin"] });
@@ -21,11 +21,11 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={`${geist.className} bg-gray-950 text-gray-100 min-h-screen`}>
         <StatusProvider>
-          <div className="flex min-h-screen">
+          <div className="flex min-h-screen overflow-x-hidden">
             <Sidebar />
-            <div className="flex-1 flex flex-col">
-              <AutopilotBanner />
-              <main className="flex-1 p-8">{children}</main>
+            <div className="flex-1 min-w-0 flex flex-col">
+              <MobileHeader />
+              <main className="flex-1 p-4 md:p-8">{children}</main>
             </div>
           </div>
         </StatusProvider>

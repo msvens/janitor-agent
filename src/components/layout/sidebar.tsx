@@ -12,8 +12,9 @@ import {
   DocumentTextIcon,
   ArrowRightStartOnRectangleIcon,
 } from "@heroicons/react/24/outline";
+import { AutopilotButton } from "./autopilot-button";
 
-const nav = [
+export const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: HomeIcon },
   { href: "/backlogs", label: "Backlogs", icon: QueueListIcon },
   { href: "/prs", label: "PRs", icon: CodeBracketIcon },
@@ -33,12 +34,15 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-56 bg-gray-900 border-r border-gray-800 flex flex-col">
+    <aside className="hidden md:flex w-56 bg-gray-900 border-r border-gray-800 flex-col">
       <div className="p-4 border-b border-gray-800">
         <h1 className="text-lg font-semibold text-gray-100">Janitor Agent</h1>
       </div>
       <nav className="flex-1 p-2 space-y-1">
-        {nav.map(({ href, label, icon: Icon }) => {
+        <div className="mb-2">
+          <AutopilotButton />
+        </div>
+        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
           const active =
             href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (

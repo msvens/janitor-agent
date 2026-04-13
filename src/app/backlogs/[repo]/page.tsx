@@ -17,12 +17,12 @@ export default async function RepoBacklogPage({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold">{repoName}</h2>
           <p className="text-gray-500">{tasks.length} tasks</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <RunButton type="plan" repo={repoName} label="Plan" className="bg-purple-600 hover:bg-purple-500 text-white" />
           <RunButton type="action" repo={repoName} label="Run Action" />
         </div>
@@ -34,9 +34,9 @@ export default async function RepoBacklogPage({
             key={task.id}
             className="bg-gray-900 border border-gray-800 rounded-lg p-4"
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-2">
               <h3 className="font-medium">{task.title}</h3>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {task.status === "pending" && (
                   <RunTaskButton taskId={task.id} repo={task.repo} />
                 )}
