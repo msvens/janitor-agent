@@ -25,15 +25,15 @@ export default async function PRsPage() {
       {prs.length === 0 ? (
         <p className="text-gray-500">No PRs created yet.</p>
       ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-800 text-gray-400 text-left">
                 <th className="p-3">Repo</th>
                 <th className="p-3">PR</th>
-                <th className="p-3">Branch</th>
+                <th className="p-3 hidden md:table-cell">Branch</th>
                 <th className="p-3">Status</th>
-                <th className="p-3">Created</th>
+                <th className="p-3 hidden sm:table-cell">Created</th>
               </tr>
             </thead>
             <tbody>
@@ -50,7 +50,7 @@ export default async function PRsPage() {
                       #{pr.pr_number}
                     </a>
                   </td>
-                  <td className="p-3 text-gray-400">
+                  <td className="p-3 text-gray-400 hidden md:table-cell">
                     <code className="text-xs">{pr.branch}</code>
                   </td>
                   <td className="p-3">
@@ -58,7 +58,7 @@ export default async function PRsPage() {
                       {pr.status}
                     </span>
                   </td>
-                  <td className="p-3 text-gray-400">{new Date(pr.created_at).toLocaleDateString()}</td>
+                  <td className="p-3 text-gray-400 hidden sm:table-cell">{new Date(pr.created_at).toLocaleDateString()}</td>
                 </tr>
               ))}
             </tbody>

@@ -71,7 +71,7 @@ export function LiveStream({ jobId }: { jobId: string }) {
           </button>
         )}
       </div>
-      <div className="p-4 max-h-[600px] overflow-y-auto font-mono text-xs space-y-0.5">
+      <div className="p-4 max-h-[600px] overflow-y-auto overflow-x-auto font-mono text-xs space-y-0.5">
         {logs.length === 0 && !done && (
           <p className="text-gray-500">Waiting for output...</p>
         )}

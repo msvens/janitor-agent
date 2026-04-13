@@ -72,9 +72,9 @@ export default function PromptEditorPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
         <h2 className="text-2xl font-bold">{isNew ? "New Prompt" : "Edit Prompt"}</h2>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {!isNew && !isDefault && (
             <button
               onClick={handleDelete}
@@ -96,7 +96,7 @@ export default function PromptEditorPage() {
       {error && <p className="text-sm text-red-400 mb-4">{error}</p>}
 
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs text-gray-400 mb-1">Name</label>
             <input
@@ -144,8 +144,7 @@ export default function PromptEditorPage() {
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            rows={24}
-            className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-blue-500"
+            className="w-full min-h-[200px] sm:min-h-[400px] md:min-h-[500px] resize-y bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm text-gray-100 font-mono focus:outline-none focus:border-blue-500"
           />
         </div>
       </div>

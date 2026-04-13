@@ -53,7 +53,7 @@ export async function EventFeed({
           <Link
             key={job.id}
             href={`/jobs/${job.id}`}
-            className="flex items-center gap-3 px-4 py-3 hover:bg-gray-800/50 transition-colors"
+            className="flex items-center gap-3 px-3 sm:px-4 py-2 sm:py-3 hover:bg-gray-800/50 transition-colors"
           >
             <span className={`text-lg ${color}`}>{icon}</span>
             <span className="text-xs text-gray-500 w-16 shrink-0">
@@ -74,7 +74,7 @@ export async function EventFeed({
                 <span className="text-red-400 ml-2">— {job.error}</span>
               )}
             </span>
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="hidden sm:flex items-center gap-3 shrink-0">
               {job.costUsd > 0 && (
                 <span className="text-xs text-gray-500">${job.costUsd.toFixed(2)}</span>
               )}
