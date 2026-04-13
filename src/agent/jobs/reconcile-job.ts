@@ -14,6 +14,7 @@ import {
   installDeps,
   runTests,
   closePR,
+  getPRCloseReason,
 } from "../github";
 import type { TrackedPR } from "../types";
 
@@ -55,7 +56,13 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
       } else {
         const prStatus = status.state === "MERGED" ? "merged" : "closed";
         log(`PR #${pr.pr_number} in ${pr.repo} is ${status.state}`);
-        await updatePRStatus(pr.repo, pr.pr_number, prStatus);
+        // Capture close reason from the last comment on the PR
+        let closeReason: string | undefined;
+        if (prStatus === "closed") {
+          closeReason = await getPRCloseReason(pr.repo, pr.pr_number);
+          if (closeReason) log(`Close reason: ${closeReason.slice(0, 200)}`);
+        }
+        await updatePRStatus(pr.repo, pr.pr_number, prStatus, closeReason);
         const task = await findTaskByPR(pr.repo, pr.pr_number);
         if (task) {
           const taskStatus = status.state === "MERGED" ? "completed" : "failed";
@@ -124,8 +131,9 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
               if (!testResult.passed) {
                 log(`Tests failed after addressing comments — closing PR`);
                 log(`Test output: ${testResult.output.slice(0, 2000)}`);
-                await closePR(pr.repo, pr.pr_number, "Closing — unable to address review feedback while keeping tests passing.");
-                await updatePRStatus(pr.repo, pr.pr_number, "closed");
+                const closeMsg = "Closing — unable to address review feedback while keeping tests passing.";
+                await closePR(pr.repo, pr.pr_number, closeMsg);
+                await updatePRStatus(pr.repo, pr.pr_number, "closed", closeMsg);
                 const task = await findTaskByPR(pr.repo, pr.pr_number);
                 if (task) await updateTaskStatus(pr.repo, task.id, "skipped");
                 await deleteRemoteBranch(pr.repo, pr.branch);

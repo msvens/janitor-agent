@@ -24,7 +24,7 @@ export async function PATCH(
   if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
 
   if (body.status) {
-    await updateTaskStatus(taskId, body.status, body.pr_number);
+    await updateTaskStatus(taskId, body.status, body.pr_number, undefined, body.skip_reason);
   }
 
   const updated = await getTask(taskId);

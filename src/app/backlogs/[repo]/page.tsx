@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTasksForRepo } from "@/db/index";
-import { TaskStatusSelect } from "@/components/backlogs/task-status-select";
+import { TaskStatusBadge } from "@/components/backlogs/task-status-badge";
+import { DismissTaskButton } from "@/components/backlogs/dismiss-task-button";
 import { RunTaskButton } from "@/components/backlogs/run-task-button";
 import { RunButton } from "@/components/jobs/run-button";
 
@@ -38,7 +39,10 @@ export default async function RepoBacklogPage({
               <h3 className="font-medium">{task.title}</h3>
               <div className="flex items-center gap-2 flex-wrap">
                 {task.status === "pending" && (
-                  <RunTaskButton taskId={task.id} repo={task.repo} />
+                  <>
+                    <RunTaskButton taskId={task.id} repo={task.repo} />
+                    <DismissTaskButton taskId={task.id} repo={task.repo} />
+                  </>
                 )}
                 {task.job_id && (
                   <Link
@@ -51,14 +55,13 @@ export default async function RepoBacklogPage({
                 <span className="text-xs px-2 py-0.5 rounded-full bg-gray-800 text-gray-400">
                   Level {task.aggressiveness}
                 </span>
-                <TaskStatusSelect
-                  taskId={task.id}
-                  repo={task.repo}
-                  currentStatus={task.status}
-                />
+                <TaskStatusBadge status={task.status} />
               </div>
             </div>
-            <p className="text-sm text-gray-400 mb-3">{task.description}</p>
+            <p className="text-sm text-gray-400 mb-2">{task.description}</p>
+            {task.status === "skipped" && task.skip_reason && (
+              <p className="text-xs text-gray-500 italic mb-2">Dismissed: {task.skip_reason}</p>
+            )}
             {task.changes.length > 0 && (
               <details className="text-sm">
                 <summary className="text-gray-500 cursor-pointer hover:text-gray-300">
