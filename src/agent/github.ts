@@ -33,7 +33,7 @@ export async function ensureWorkspace(
 }
 
 export async function updateWorkspace(repoDir: string, branch: string): Promise<void> {
-  await exec("git", ["fetch", "origin"], { cwd: repoDir });
+  await exec("git", [...gitAuthArgs(), "fetch", "origin"], { cwd: repoDir });
   await exec("git", ["checkout", `origin/${branch}`], { cwd: repoDir });
   await exec("git", ["clean", "-fd"], { cwd: repoDir });
 }
@@ -88,6 +88,13 @@ export async function cleanupRepo(dir: string): Promise<void> {
   await rm(dir, { recursive: true, force: true });
 }
 
+function gitAuthArgs(): string[] {
+  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) return [];
+  const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
+  return ["-c", `http.https://github.com/.extraheader=${header}`];
+}
+
 export async function deleteRemoteBranch(repo: string, branchName: string): Promise<void> {
   try {
     await exec("gh", ["api", "-X", "DELETE", `repos/${repo}/git/refs/heads/${branchName}`]);
@@ -113,7 +120,7 @@ export async function commitAndPush(
 ): Promise<void> {
   await exec("git", ["add", "-A"], { cwd: repoDir });
   await exec("git", ["commit", "-m", message], { cwd: repoDir });
-  await exec("git", ["push", "origin", branchName], { cwd: repoDir });
+  await exec("git", [...gitAuthArgs(), "push", "origin", branchName], { cwd: repoDir });
 }
 
 export async function createPR(
