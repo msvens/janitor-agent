@@ -184,7 +184,7 @@ export async function executeTask(
   return { result, costUsd };
 }
 
-async function fixTestFailures(
+export async function fixTestFailures(
   testOutput: string,
   repoPath: string,
   config: Config,

@@ -1,7 +1,8 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { findTaskByPR, updateTaskStatus } from "../backlog";
-import { addressComments } from "../agent";
+import { addressComments, estimateCost } from "../agent";
+import { fixTestFailures } from "../action";
 import { getSettings, getRepoConfig, updatePRStatus, updateJob } from "../../db/index";
 import {
   cloneRepo,
@@ -13,7 +14,7 @@ import {
   deleteRemoteBranch,
   installDeps,
   runTests,
-  closePR,
+  postPRComment,
   getPRCloseReason,
 } from "../github";
 import type { TrackedPR } from "../types";
@@ -124,23 +125,54 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
           }
 
           if (await hasChanges(repoDir)) {
-            // Run tests before pushing
+            // Run tests before pushing; retry-fix loop mirrors action-job
             if (repoConfig?.test_command) {
               log(`Running tests...`);
-              const testResult = await runTests(repoDir, repoConfig.test_command);
+              let testResult = await runTests(repoDir, repoConfig.test_command);
+
               if (!testResult.passed) {
-                log(`Tests failed after addressing comments — closing PR`);
-                log(`Test output: ${testResult.output.slice(0, 2000)}`);
-                const closeMsg = "Closing — unable to address review feedback while keeping tests passing.";
-                await closePR(pr.repo, pr.pr_number, closeMsg);
-                await updatePRStatus(pr.repo, pr.pr_number, "closed", closeMsg);
-                const task = await findTaskByPR(pr.repo, pr.pr_number);
-                if (task) await updateTaskStatus(pr.repo, task.id, "skipped");
-                await deleteRemoteBranch(pr.repo, pr.branch);
-                log(`Closed PR #${pr.pr_number} and cleaned up branch`);
-                continue;
+                const maxFixAttempts = 3;
+                let fixed = false;
+                for (let attempt = 1; attempt <= maxFixAttempts; attempt++) {
+                  log(`Tests failed, asking Claude to fix (attempt ${attempt}/${maxFixAttempts})...`);
+                  log(`Test output: ${testResult.output.slice(0, 1000)}`);
+
+                  const fixResult = await fixTestFailures(testResult.output, repoDir, config, settings, log);
+                  const fixCost = estimateCost("claude", fixResult.usage, config.claude.model);
+                  costBudget.remaining -= fixCost;
+                  totalCost += fixCost;
+                  log(`Fix attempt cost: $${fixCost.toFixed(4)}`);
+
+                  testResult = await runTests(repoDir, repoConfig.test_command);
+                  if (testResult.passed) {
+                    log(`Tests pass after fix (attempt ${attempt})`);
+                    fixed = true;
+                    break;
+                  }
+                }
+
+                if (!fixed) {
+                  log(`Tests still failing after ${maxFixAttempts} fix attempts — leaving PR open with comment`);
+                  const commentBody = [
+                    "Attempted to address review feedback but could not keep tests passing after 3 fix attempts.",
+                    "",
+                    "Leaving this PR open for human review — feel free to add another comment with guidance, fix manually, or close.",
+                    "",
+                    "Test output:",
+                    "```",
+                    testResult.output.slice(0, 3000),
+                    "```",
+                  ].join("\n");
+                  try {
+                    await postPRComment(pr.repo, pr.pr_number, commentBody);
+                  } catch (err) {
+                    log(`Failed to post PR comment: ${err}`);
+                  }
+                  continue;
+                }
+              } else {
+                log(`Tests pass`);
               }
-              log(`Tests pass`);
             }
 
             await commitAndPush(repoDir, pr.branch, "Address review comments");
