@@ -3,6 +3,7 @@ import { getTasksForRepo } from "@/db/index";
 import { TaskStatusBadge } from "@/components/backlogs/task-status-badge";
 import { DismissTaskButton } from "@/components/backlogs/dismiss-task-button";
 import { RunTaskButton } from "@/components/backlogs/run-task-button";
+import { ResetTaskButton } from "@/components/backlogs/reset-task-button";
 import { RunButton } from "@/components/jobs/run-button";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +44,9 @@ export default async function RepoBacklogPage({
                     <RunTaskButton taskId={task.id} repo={task.repo} />
                     <DismissTaskButton taskId={task.id} repo={task.repo} />
                   </>
+                )}
+                {task.status === "failed" && (
+                  <ResetTaskButton taskId={task.id} repo={task.repo} />
                 )}
                 {task.job_id && (
                   <Link
