@@ -10,34 +10,29 @@ import {
   postPRComment,
 } from "../github";
 
-const FALLBACK_REVIEW_PROMPT = `You are a code review agent. You have been asked to review a pull request.
+const FALLBACK_REVIEW_PROMPT = `You are a code review agent. A human reviewer is counting on you to catch issues they might miss.
 
-## PR Diff
+## Changed files
 
-{{DIFF}}
+{{CHANGED_FILES}}
 
-## Instructions
+## Your process — follow these steps IN ORDER
 
-You MUST investigate the codebase before writing your review. Do NOT just summarize the diff — the human reviewer can already see that. Your job is to provide insight they cannot get from the diff alone.
+1. Read each changed file listed above using the readFile tool. You MUST do this before writing anything.
+2. For any function that was modified or removed, grep for its name to find callers. Are they updated correctly?
+3. Look for test files related to the changed code. Are there tests? Do they cover the changes?
+4. Only after completing steps 1-3, write your review.
 
-### Required steps (use the tools)
+## Review format
 
-1. **Read every file touched by the PR** to understand the full context — not just the changed lines.
-2. **Check callers and dependencies** — grep for functions that were changed or removed. Are callers updated? Are there broken references?
-3. **Look for tests** — are there tests for the changed behavior? Should there be?
-4. **Check for side effects** — does the change break any implicit contract?
+Do NOT summarize the diff — the reviewer can already see what changed. Instead provide:
 
-### Then write your review
+- **Correctness**: Bugs, logic errors, or edge cases the changes introduce
+- **Impact analysis**: What callers or dependents are affected? Any broken contracts?
+- **Missing pieces**: Missing error handling, tests, or documentation
+- **Verdict**: Does this PR look correct and safe to merge? Explain WHY.
 
-Focus on:
-- **Correctness**: Are there bugs, logic errors, or edge cases the diff introduces?
-- **Quality**: Is the code clean, readable, and well-structured?
-- **Missing pieces**: Are there missing error handling, tests, or documentation?
-- **Suggestions**: Concrete improvements (not stylistic nitpicks)
-
-Be constructive and specific — reference file names and line numbers.
-
-If the changes look good, explain WHY — what did the author get right? "Looks good" alone is not useful. For example: "The extraction of the shared helper avoids the N+1 query that was in the original loop, and the new test covers the empty-list edge case."`;
+Be specific — reference file names and line numbers. If the changes are solid, explain what makes them correct (e.g., "removing the unused ResponseWriter param is safe because the handler writes responses via the apiResponse helper at line 42, not directly").`;
 
 export interface ReviewJobOptions {
   repo: string;
@@ -88,11 +83,14 @@ export async function runReviewJob(options: ReviewJobOptions): Promise<ReviewJob
     await exec("git", ["fetch", "origin", branchName], { cwd: repoDir });
     await exec("git", ["checkout", "-b", branchName, "FETCH_HEAD"], { cwd: repoDir });
 
+    const changedFiles = extractChangedFiles(diff);
+    log(`Changed files: ${changedFiles.join(", ")}`);
+
     const dbPrompt = await getDefaultPrompt("review");
     const template = dbPrompt?.content ?? FALLBACK_REVIEW_PROMPT;
-    const systemPrompt = template.includes("{{DIFF}}")
-      ? template.replace("{{DIFF}}", diff.slice(0, 50000))
-      : template + "\n\n## PR Diff\n\n" + diff.slice(0, 50000);
+    const systemPrompt = template.includes("{{CHANGED_FILES}}")
+      ? template.replace("{{CHANGED_FILES}}", changedFiles.map((f) => `- ${f}`).join("\n"))
+      : template;
 
     const chatFn = getChatFn(backend, config, settings);
     const maxSteps = maxStepsForBackend(backend, settings);
@@ -100,10 +98,19 @@ export async function runReviewJob(options: ReviewJobOptions): Promise<ReviewJob
     const tools = createReadOnlyTools(repoDir, stepTracker);
     const stepLogger = makeStepLogger(log);
 
+    const userPrompt = [
+      `Review PR #${prNumber}. Start by reading the changed files listed in your instructions.`,
+      "",
+      "Here is the diff for reference:",
+      "```diff",
+      diff.slice(0, 50000),
+      "```",
+    ].join("\n");
+
     const { text, usage, steps } = await runAgent({
       chatFn,
       system: systemPrompt,
-      prompt: `Review PR #${prNumber} according to your instructions. Use the tools to read files for context if needed.`,
+      prompt: userPrompt,
       tools,
       maxSteps,
       signal,
@@ -130,6 +137,15 @@ export async function runReviewJob(options: ReviewJobOptions): Promise<ReviewJob
   } finally {
     await cleanupRepo(repoDir);
   }
+}
+
+function extractChangedFiles(diff: string): string[] {
+  const files = new Set<string>();
+  for (const line of diff.split("\n")) {
+    const match = line.match(/^diff --git a\/(.+?) b\//);
+    if (match) files.add(match[1]!);
+  }
+  return [...files];
 }
 
 function makeStepLogger(onLog: (msg: string) => void): (step: StepInfo) => void {
