@@ -67,8 +67,8 @@ const DEFAULT_PROMPTS: Array<{
     description: "Fix test failures caused by agent edits. Placeholder: {{TEST_OUTPUT}}",
   },
   {
-    name: "Default Review",
-    type: "review",
+    name: "Default Address Comments",
+    type: "address",
     content: REVIEW_PROMPT,
     description: "Address PR review comments. Comments are passed as user prompt.",
   },

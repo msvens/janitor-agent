@@ -116,7 +116,8 @@ export default function PromptEditorPage() {
               <option value="plan">Plan</option>
               <option value="action">Action</option>
               <option value="fix">Fix</option>
-              <option value="review">Review</option>
+              <option value="address">Address Comments</option>
+              <option value="review">Review PR</option>
             </select>
           </div>
         </div>
@@ -138,7 +139,8 @@ export default function PromptEditorPage() {
               {type === "plan" && "Placeholders: {{LEVEL}}, {{LEVEL_DESCRIPTION}}, {{EXISTING_TASKS}}"}
               {type === "action" && "Placeholders: {{TASK_TITLE}}, {{TASK_DESCRIPTION}}, {{CHANGES}}"}
               {type === "fix" && "Placeholder: {{TEST_OUTPUT}}"}
-              {type === "review" && "No placeholders — comments are passed as user prompt"}
+              {type === "address" && "No placeholders — comments are passed as user prompt"}
+              {type === "review" && "Placeholder: {{CHANGED_FILES}}"}
             </span>
           </label>
           <textarea

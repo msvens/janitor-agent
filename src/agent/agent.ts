@@ -185,7 +185,7 @@ export async function addressComments(
     .map((c, i) => `Comment ${i + 1}:\n${c}`)
     .join("\n\n");
 
-  const dbPrompt = await getDefaultPrompt("review");
+  const dbPrompt = await getDefaultPrompt("address");
   const systemPrompt = dbPrompt?.content ?? `You are a code maintenance agent. A reviewer left comments on your PR. Address them by making the requested changes. If a comment is not actionable (e.g., "looks good"), skip it.`;
 
   const { text, usage, steps } = await runAgent({

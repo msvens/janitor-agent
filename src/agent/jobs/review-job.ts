@@ -88,9 +88,7 @@ export async function runReviewJob(options: ReviewJobOptions): Promise<ReviewJob
 
     const dbPrompt = await getDefaultPrompt("review");
     const template = dbPrompt?.content ?? FALLBACK_REVIEW_PROMPT;
-    const systemPrompt = template.includes("{{CHANGED_FILES}}")
-      ? template.replace("{{CHANGED_FILES}}", changedFiles.map((f) => `- ${f}`).join("\n"))
-      : template;
+    const systemPrompt = template.replace("{{CHANGED_FILES}}", changedFiles.map((f) => `- ${f}`).join("\n"));
 
     const chatFn = getChatFn(backend, config, settings);
     const maxSteps = maxStepsForBackend(backend, settings);

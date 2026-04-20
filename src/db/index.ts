@@ -71,9 +71,17 @@ async function ensureMigrated(): Promise<void> {
   try {
     const { migrateConfigToSettings } = await import("../agent/config");
     await migrateConfigToSettings();
+    await migrateReviewPromptType();
   } catch {
     migrationRan = false;
   }
+}
+
+async function migrateReviewPromptType(): Promise<void> {
+  const db = getDb();
+  await db.update(schema.prompts)
+    .set({ type: "address" })
+    .where(eq(schema.prompts.type, "review"));
 }
 
 export async function getSettings(): Promise<Settings> {
@@ -116,7 +124,7 @@ export async function getSetting<K extends keyof Settings>(key: K): Promise<Sett
 
 // --- Prompts ---
 
-export type PromptType = "plan" | "action" | "fix" | "review";
+export type PromptType = "plan" | "action" | "fix" | "address" | "review";
 
 export interface Prompt {
   id: string;
