@@ -68,11 +68,16 @@ export async function runReviewJob(options: ReviewJobOptions): Promise<ReviewJob
   log(`Cloning ${repo}...`);
   const repoDir = await cloneRepo(repo);
   try {
-    // Checkout the PR branch
+    // Fetch and checkout the PR branch (can't use gh pr checkout on a shallow clone)
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const exec = promisify(execFile);
-    await exec("gh", ["pr", "checkout", String(prNumber), "--repo", repo], { cwd: repoDir });
+    const { stdout: prJson } = await exec("gh", [
+      "pr", "view", String(prNumber), "--repo", repo, "--json", "headRefName",
+    ]);
+    const branchName = JSON.parse(prJson).headRefName;
+    await exec("git", ["fetch", "origin", branchName], { cwd: repoDir });
+    await exec("git", ["checkout", "-b", branchName, "FETCH_HEAD"], { cwd: repoDir });
 
     const dbPrompt = await getDefaultPrompt("review");
     const template = dbPrompt?.content ?? FALLBACK_REVIEW_PROMPT;
