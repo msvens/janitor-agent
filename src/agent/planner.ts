@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createReadOnlyTools, type StepTracker } from "./tools";
-import { LEVEL_DESCRIPTIONS, estimateCost, getChatFn } from "./agent";
+import { LEVEL_DESCRIPTIONS, estimateCost, getChatFn, modelForBackend, selectBackend } from "./agent";
 import { runAgent, type StepInfo } from "./loop";
 import { PROMPTS_DIR } from "./paths";
 import { getPromptForRepo, getClosedPRsForRepo } from "../db/index";
@@ -139,7 +139,8 @@ export async function planRepo(
   const dbPrompt = await getPromptForRepo(repoConfig.name, "plan");
   const template = dbPrompt?.content ?? await readFile(PLAN_PROMPT_PATH, "utf-8");
   const systemPrompt = await buildPlanPrompt(repoConfig.aggressiveness, template, existingBacklog);
-  const chatFn = getChatFn("claude", config, settings);
+  const backend = selectBackend("planner", repoConfig.aggressiveness, settings);
+  const chatFn = getChatFn(backend, config, settings);
   const maxSteps = settings.planning_max_steps;
   const stepTracker: StepTracker = { current: 0, max: maxSteps };
   const tools = createReadOnlyTools(repoPath, stepTracker);
@@ -175,6 +176,6 @@ export async function planRepo(
   }));
 
   onLog(`Found ${tasks.length} tasks`);
-  const costUsd = estimateCost("claude", usage, config.claude.model);
+  const costUsd = estimateCost(backend, usage, modelForBackend(backend, settings));
   return { tasks, costUsd };
 }

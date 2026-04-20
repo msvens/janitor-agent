@@ -2,13 +2,14 @@
 
 ## Project overview
 
-Autonomous code maintenance agent with a Next.js web UI. Scans GitHub repos, identifies maintenance tasks via a planning agent, executes them, and creates PRs. Supports Claude (cloud) and Ollama (local) backends, with backend selected by task complexity.
+Autonomous code maintenance agent with a Next.js web UI. Scans GitHub repos, identifies maintenance tasks via a planning agent, executes them, and creates PRs. Supports Claude (cloud), Google Gemini (cloud), and Ollama (local) backends, with the backend chosen per agent role (planner, action, fix, review).
 
 ## Tech stack
 
 - **Next.js 16** (App Router) + **React 19** + **Tailwind CSS 4** — web UI on port 3003
 - **PostgreSQL** via **Drizzle ORM** — all state (repos, tasks, settings, jobs, PRs)
 - **@anthropic-ai/sdk** — Claude API with streaming
+- **@google/genai** — Google Gemini API (non-streaming generateContent)
 - **ollama** — local LLM client with streaming + undici timeout override
 - **zod** + **zod-to-json-schema** — tool parameter validation
 - **gh CLI** — GitHub operations (clone, PR creation, status checks)
@@ -19,9 +20,11 @@ Autonomous code maintenance agent with a Next.js web UI. Scans GitHub repos, ide
 Web UI at `src/app/`, agent code at `src/agent/`, database at `src/db/`.
 
 ### Config split
-- **`config.yaml`** — bootstrap only: database_url, port, LLM model names/hosts. Searched at: `JANITOR_CONFIG` env → `~/.janitor/config.yaml` → `/etc/janitor/config.yaml` → `./config.yaml`
-- **DB `settings` table** — runtime config: cost limits, max steps, aggressiveness, Ollama toggle. Managed via UI.
+- **`config.yaml`** — bootstrap only: database_url, port, workspace_dir, ollama.host. Searched at: `JANITOR_CONFIG` env → `~/.janitor/config.yaml` → `/etc/janitor/config.yaml` → `./config.yaml`
+- **DB `settings` table** — runtime config, editable from the UI: model names (claude_model, gemini_model, ollama_model), per-role backend selection (planner/action/fix/review), enables, cost/step limits, autopilot.
 - **DB `repos` table** — repos to maintain. Managed via UI.
+- **Env vars** — `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (get one at https://aistudio.google.com/apikey). Keys never live in config.yaml.
+- **One-time migration**: on first `getSettings()` call, any pre-existing `claude.model` / `ollama.model` from config.yaml is copied into the settings table. After that the YAML fields are ignored.
 
 ### Key modules
 - `src/agent/loop.ts` — Agent loop: `runAgent()` owns tool-calling cycle. Backends implement `ChatFn`
@@ -35,17 +38,20 @@ Web UI at `src/app/`, agent code at `src/agent/`, database at `src/db/`.
 - `src/db/index.ts` — All database queries
 
 ### Backend selection
-- `selectBackend(aggressiveness, settings)` — Ollama for tasks ≤ `ollama_max_aggressiveness` when enabled, Claude for everything else
-- Planning and test fixing always use Claude
-- `getChatFn(backend, config, settings)` — creates chat function from bootstrap config + runtime settings
+- `selectBackend(role, aggressiveness, settings)` where `role = "planner" | "action" | "fix" | "review"`
+  - `action`: Ollama for tasks ≤ `ollama_max_aggressiveness` when enabled, else `settings.action_backend`
+  - `planner` / `fix` / `review`: return `settings.<role>_backend` directly (typically Claude or Gemini; Ollama allowed but not recommended for planning)
+- `getChatFn(backend, config, settings)` — builds ChatFn. Picks model name from `settings.<backend>_model`.
+- `modelForBackend(backend, settings)` — returns the current model name for a backend.
 
 ### Important patterns
 - `runAgent()` loop: call model → parse tool calls → validate with Zod → execute → feed results → repeat
 - Claude backend groups consecutive tool results into single `user` message with `tool_result` blocks
+- Gemini backend pairs `functionCall` / `functionResponse` by position within a Content (not by ID) — preserve ordering when emitting tool results. `thoughtsTokenCount` from 2.5 models is added to outputTokens so Pro cost doesn't under-report.
 - Ollama backend uses custom undici `Agent` with 10-min `headersTimeout` (Node.js default is 300s)
 - All agent output streams to UI via `onLog` callback → JobManager EventEmitter → SSE
 - Tasks have `changes[]` (planner's findings) — guidance for the action agent, not separate execution units
-- Cost tracked per model tier (haiku $0.80/$4, sonnet $3/$15, opus $15/$75 per 1M tokens)
+- Cost tracked per model tier. Current MODEL_PRICING (prefix-matched, longest first, $ per 1M in/out): gemini-2.5-flash-lite $0.10/$0.40, gemini-2.5-flash $0.30/$2.50, gemini-2.5-pro $1.25/$10, claude-haiku $0.80/$4, claude-sonnet $3/$15, claude-opus $15/$75.
 
 ## Commands
 

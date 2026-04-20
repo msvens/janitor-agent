@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "@google/genai": "^1.50.1",
     "@heroicons/react": "^2.2.0",
     "drizzle-orm": "^0.45.2",
     "jose": "^6.2.2",

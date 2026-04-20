@@ -1,5 +1,7 @@
 # Janitor Agent Configuration
 # Copy to ~/.janitor/config.yaml
+# Bootstrap-only — model names, enables, and tunable settings live in the DB
+# and are editable via the Config UI.
 
 # Database connection
 database_url: postgresql://localhost:5432/janitor
@@ -7,13 +9,12 @@ database_url: postgresql://localhost:5432/janitor
 # Web server port
 port: 3003
 
-# Claude API (requires ANTHROPIC_API_KEY env var)
-claude:
-  model: claude-sonnet-4-6
-
-# Ollama (optional — for local LLM)
+# Ollama (optional — for local LLM; the model name is a runtime setting)
 ollama:
   host: http://localhost:11434
-  model: qwen3-coder
+
+# API keys are read from environment variables (never put them in this file):
+#   ANTHROPIC_API_KEY — Claude
+#   GEMINI_API_KEY    — Google Gemini (create at https://aistudio.google.com/apikey)
 
 # Authentication: see .env.local (generate with: pnpm run auth:init <password>)

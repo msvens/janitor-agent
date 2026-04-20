@@ -19,16 +19,26 @@ interface Prompt {
   type: string;
 }
 
+type Backend = "claude" | "ollama" | "gemini";
+
 interface Settings {
   max_cost_per_run: number;
   max_open_prs: number;
   default_aggressiveness: number;
+  claude_model: string;
+  ollama_model: string;
+  gemini_model: string;
   ollama_enabled: boolean;
   ollama_num_ctx: number;
   ollama_max_aggressiveness: number;
   ollama_max_steps: number;
   claude_max_steps: number;
+  gemini_max_steps: number;
   planning_max_steps: number;
+  planner_backend: Backend;
+  action_backend: Backend;
+  fix_backend: Backend;
+  review_backend: Backend;
   autopilot_enabled: boolean;
   autopilot_interval_minutes: number;
 }
@@ -37,8 +47,12 @@ interface BootstrapConfig {
   database_url: string;
   port: number;
   workspace_dir: string;
-  claude: { model: string };
-  ollama: { host: string; model: string };
+  ollama: { host: string };
+}
+
+interface EnvStatus {
+  anthropicKeyPresent: boolean;
+  geminiKeyPresent: boolean;
 }
 
 function Input({ label, value, onChange, type = "text", disabled = false }: {
@@ -58,6 +72,28 @@ function Input({ label, value, onChange, type = "text", disabled = false }: {
         disabled={disabled}
         className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-blue-500 disabled:opacity-50"
       />
+    </div>
+  );
+}
+
+function Select({ label, value, onChange, options }: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div>
+      <label className="block text-xs text-gray-400 mb-1">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 focus:outline-none focus:border-blue-500"
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
     </div>
   );
 }
@@ -86,6 +122,7 @@ export default function ConfigPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [repos, setRepos] = useState<RepoConfig[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
+  const [env, setEnv] = useState<EnvStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +135,7 @@ export default function ConfigPage() {
         setConfig(data.config);
         setSettings(data.settings);
         setRepos(data.repos);
+        setEnv(data.env ?? null);
       })
       .catch((err) => setError(err.message));
   }, []);
@@ -181,10 +219,19 @@ export default function ConfigPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Database URL" value={config.database_url} onChange={() => {}} disabled />
             <Input label="Port" value={config.port} onChange={() => {}} disabled />
-            <Input label="Claude model" value={config.claude.model} onChange={() => {}} disabled />
-            <Input label="Ollama model" value={config.ollama.model} onChange={() => {}} disabled />
+            <Input label="Ollama host" value={config.ollama.host} onChange={() => {}} disabled />
             <Input label="Workspace directory" value={config.workspace_dir} onChange={() => {}} disabled />
           </div>
+          {env && (
+            <div className="mt-4 flex flex-col gap-1 text-xs">
+              <span className={env.anthropicKeyPresent ? "text-green-400" : "text-red-400"}>
+                ANTHROPIC_API_KEY: {env.anthropicKeyPresent ? "set" : "NOT SET"}
+              </span>
+              <span className={env.geminiKeyPresent ? "text-green-400" : "text-red-400"}>
+                GEMINI_API_KEY: {env.geminiKeyPresent ? "set" : "NOT SET — create a key at https://aistudio.google.com/apikey"}
+              </span>
+            </div>
+          )}
         </section>
 
         <section className="bg-gray-900 border border-gray-800 rounded-lg p-3 sm:p-5">
@@ -223,8 +270,70 @@ export default function ConfigPage() {
             Auto-pilot runs: reconcile → action, repeating every N minutes. Start/stop from the banner above. Max 1 open PR per repo.
           </p>
 
-          <h4 className="text-sm font-medium text-gray-300 mb-3">Claude</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+          <h4 className="text-sm font-medium text-gray-300 mb-3">Models</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+            <Input
+              label="Claude model"
+              value={settings.claude_model}
+              onChange={(v) => setSettings({ ...settings, claude_model: v })}
+            />
+            <Input
+              label="Gemini model"
+              value={settings.gemini_model}
+              onChange={(v) => setSettings({ ...settings, gemini_model: v })}
+            />
+            <Input
+              label="Ollama model"
+              value={settings.ollama_model}
+              onChange={(v) => setSettings({ ...settings, ollama_model: v })}
+            />
+          </div>
+
+          <h4 className="text-sm font-medium text-gray-300 mb-3">Agent roles</h4>
+          {(() => {
+            const backendOptions: { value: string; label: string }[] = [];
+            if (env?.anthropicKeyPresent) backendOptions.push({ value: "claude", label: "Claude" });
+            if (env?.geminiKeyPresent) backendOptions.push({ value: "gemini", label: "Gemini" });
+            if (settings.ollama_enabled) backendOptions.push({ value: "ollama", label: "Ollama" });
+            return (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-2">
+                  <Select
+                    label="Planner"
+                    value={settings.planner_backend}
+                    onChange={(v) => setSettings({ ...settings, planner_backend: v as Backend })}
+                    options={backendOptions}
+                  />
+                  <Select
+                    label="Action (fallback above Ollama tier)"
+                    value={settings.action_backend}
+                    onChange={(v) => setSettings({ ...settings, action_backend: v as Backend })}
+                    options={backendOptions}
+                  />
+                  <Select
+                    label="Fix"
+                    value={settings.fix_backend}
+                    onChange={(v) => setSettings({ ...settings, fix_backend: v as Backend })}
+                    options={backendOptions}
+                  />
+                  <Select
+                    label="Review"
+                    value={settings.review_backend}
+                    onChange={(v) => setSettings({ ...settings, review_backend: v as Backend })}
+                    options={backendOptions}
+                  />
+                </div>
+                {settings.planner_backend === "ollama" && (
+                  <p className="text-xs text-yellow-400 mb-4">
+                    Ollama is not recommended for planning — tool-call reliability drops on long loops.
+                  </p>
+                )}
+              </>
+            );
+          })()}
+
+          <h4 className="text-sm font-medium text-gray-300 mb-3 mt-5">Claude</h4>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
             <Input
               label="Max steps"
               type="number"
@@ -236,6 +345,19 @@ export default function ConfigPage() {
               type="number"
               value={settings.planning_max_steps}
               onChange={(v) => setSettings({ ...settings, planning_max_steps: parseInt(v) || 25 })}
+            />
+          </div>
+
+          <h4 className="text-sm font-medium text-gray-300 mb-3">Gemini</h4>
+          <p className="text-xs text-gray-500 mb-3">
+            Gemini is available in the Agent roles dropdown when GEMINI_API_KEY is set.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+            <Input
+              label="Max steps"
+              type="number"
+              value={settings.gemini_max_steps}
+              onChange={(v) => setSettings({ ...settings, gemini_max_steps: parseInt(v) || 15 })}
             />
           </div>
 

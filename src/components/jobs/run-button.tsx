@@ -6,9 +6,10 @@ import { useAppStatus } from "@/components/status-provider";
 import type { JobType } from "@/lib/job-manager";
 
 const descriptions: Record<JobType, string> = {
-  plan: "This will use Claude to survey the repo and generate maintenance tasks. It costs ~$0.30-0.70 per repo.",
+  plan: "This will survey the repo and generate maintenance tasks.",
   action: "This will pick the next pending task and execute it (make edits, run tests, create PR).",
   reconcile: "This will check open PRs for status changes and handle review comments.",
+  review: "This will review the PR and post a summary comment on GitHub.",
 };
 
 export function RunButton({

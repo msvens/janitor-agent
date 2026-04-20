@@ -1,7 +1,8 @@
 import { createClaudeChatFn } from "./backends/claude";
+import { createGeminiChatFn } from "./backends/gemini";
 import { createOllamaChatFn } from "./backends/ollama";
 import { type ChatFn, type ChatUsage, type StepInfo } from "./loop";
-import type { Backend, Config, Settings } from "./types";
+import type { AgentRole, Backend, Config, Settings } from "./types";
 
 export const LEVEL_DESCRIPTIONS: Record<number, string> = {
   1: `**Minimal**: Only dependency updates.
@@ -51,11 +52,26 @@ Do NOT use bash for searching files — use the glob and grep tools instead. Sav
 
 // --- Backend selection ---
 
-export function selectBackend(aggressiveness: number, settings: Settings): Backend {
-  if (settings.ollama_enabled && aggressiveness <= settings.ollama_max_aggressiveness) {
-    return "ollama";
+export function selectBackend(
+  role: AgentRole,
+  aggressiveness: number,
+  settings: Settings,
+): Backend {
+  if (role === "action") {
+    if (settings.ollama_enabled && aggressiveness <= settings.ollama_max_aggressiveness) {
+      return "ollama";
+    }
+    return settings.action_backend;
   }
-  return "claude";
+  if (role === "planner") return settings.planner_backend;
+  if (role === "fix") return settings.fix_backend;
+  return settings.review_backend;
+}
+
+export function modelForBackend(backend: Backend, settings: Settings): string {
+  if (backend === "ollama") return settings.ollama_model;
+  if (backend === "gemini") return settings.gemini_model;
+  return settings.claude_model;
 }
 
 export function getChatFn(backend: Backend, config: Config, settings: Settings): ChatFn {
@@ -63,29 +79,39 @@ export function getChatFn(backend: Backend, config: Config, settings: Settings):
     return createOllamaChatFn({
       enabled: settings.ollama_enabled,
       host: config.ollama.host,
-      model: config.ollama.model,
+      model: settings.ollama_model,
       num_ctx: settings.ollama_num_ctx,
       max_steps: settings.ollama_max_steps,
       max_aggressiveness: settings.ollama_max_aggressiveness,
     });
   }
-  return createClaudeChatFn(config.claude.model);
+  if (backend === "gemini") {
+    return createGeminiChatFn(settings.gemini_model);
+  }
+  return createClaudeChatFn(settings.claude_model);
 }
 
 export function maxStepsForBackend(backend: Backend, settings: Settings): number {
-  return backend === "ollama" ? settings.ollama_max_steps : settings.claude_max_steps;
+  if (backend === "ollama") return settings.ollama_max_steps;
+  if (backend === "gemini") return settings.gemini_max_steps;
+  return settings.claude_max_steps;
 }
 
 // --- Cost estimation ---
 
-const MODEL_PRICING: Record<string, [number, number]> = {
-  "claude-haiku":  [0.80, 4],
-  "claude-sonnet": [3, 15],
-  "claude-opus":   [15, 75],
-};
+// Entries are matched by `startsWith`, longest-prefix first so e.g.
+// "gemini-2.5-flash-lite" wins over "gemini-2.5-flash".
+const MODEL_PRICING: Array<[string, [number, number]]> = [
+  ["gemini-2.5-flash-lite", [0.10, 0.40]],
+  ["gemini-2.5-flash",      [0.30, 2.50]],
+  ["gemini-2.5-pro",        [1.25, 10.00]],
+  ["claude-haiku",          [0.80, 4]],
+  ["claude-sonnet",         [3, 15]],
+  ["claude-opus",           [15, 75]],
+];
 
 function getModelPricing(model: string): [number, number] {
-  for (const [prefix, pricing] of Object.entries(MODEL_PRICING)) {
+  for (const [prefix, pricing] of MODEL_PRICING) {
     if (model.startsWith(prefix)) return pricing;
   }
   return [3, 15];
@@ -132,7 +158,7 @@ export function logStep(step: StepInfo) {
   }
 }
 
-// --- Review comment handling (always Claude) ---
+// --- Review comment handling (uses review_backend) ---
 
 export interface AddressCommentsResult {
   costUsd: number;
@@ -144,13 +170,15 @@ export async function addressComments(
   repoPath: string,
   comments: string[],
   config: Config,
+  settings: Settings,
   abortController?: AbortController,
 ): Promise<AddressCommentsResult> {
   const { runAgent } = await import("./loop");
   const { createTools } = await import("./tools");
   const { getDefaultPrompt } = await import("../db/index");
 
-  const chatFn = createClaudeChatFn(config.claude.model);
+  const backend = selectBackend("review", 0, settings);
+  const chatFn = getChatFn(backend, config, settings);
   const tools = createTools(repoPath);
 
   const commentBlock = comments
@@ -170,7 +198,7 @@ export async function addressComments(
   });
 
   return {
-    costUsd: estimateCost("claude", usage, config.claude.model),
+    costUsd: estimateCost(backend, usage, modelForBackend(backend, settings)),
     response: text,
     steps,
   };

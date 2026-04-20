@@ -1,12 +1,13 @@
-export type Backend = "claude" | "ollama";
+export type Backend = "claude" | "ollama" | "gemini";
+
+export type AgentRole = "planner" | "action" | "fix" | "review";
 
 // Bootstrap config (from config.yaml — connection/deployment info)
 export interface Config {
   database_url: string;
   port: number;
   workspace_dir: string;
-  claude: { model: string };
-  ollama: { host: string; model: string };
+  ollama: { host: string };
 }
 
 // Runtime settings (from DB — tunable via UI)
@@ -14,12 +15,20 @@ export interface Settings {
   max_cost_per_run: number;
   max_open_prs: number;
   default_aggressiveness: number;
+  claude_model: string;
+  ollama_model: string;
+  gemini_model: string;
   ollama_enabled: boolean;
   ollama_num_ctx: number;
   ollama_max_aggressiveness: number;
   ollama_max_steps: number;
   claude_max_steps: number;
+  gemini_max_steps: number;
   planning_max_steps: number;
+  planner_backend: Backend;
+  action_backend: Backend;
+  fix_backend: Backend;
+  review_backend: Backend;
   autopilot_enabled: boolean;
   autopilot_interval_minutes: number;
 }
