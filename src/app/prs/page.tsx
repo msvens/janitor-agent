@@ -1,7 +1,7 @@
 import "@/lib/init";
 import { getAllPRs } from "@/db/index";
-import { runReconcileJob } from "@/agent/jobs/reconcile-job";
 import { ReviewPRButton } from "@/components/prs/review-pr-button";
+import { ReconcileStatus } from "@/components/prs/reconcile-status";
 
 export const dynamic = "force-dynamic";
 
@@ -12,17 +12,12 @@ const statusColors: Record<string, string> = {
 };
 
 export default async function PRsPage() {
-  try {
-    await runReconcileJob();
-  } catch (err) {
-    console.error("[prs] Reconcile failed:", (err as Error).message);
-  }
-
   const prs = await getAllPRs();
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6">Pull Requests</h2>
+      <h2 className="text-2xl font-bold mb-4">Pull Requests</h2>
+      <ReconcileStatus />
       {prs.length === 0 ? (
         <p className="text-gray-500">No PRs created yet.</p>
       ) : (
