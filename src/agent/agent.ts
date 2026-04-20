@@ -169,6 +169,7 @@ export interface AddressCommentsResult {
 export async function addressComments(
   repoPath: string,
   comments: string[],
+  diff: string,
   config: Config,
   settings: Settings,
   abortController?: AbortController,
@@ -188,10 +189,20 @@ export async function addressComments(
   const dbPrompt = await getDefaultPrompt("address");
   const systemPrompt = dbPrompt?.content ?? `You are a code maintenance agent. A reviewer left comments on your PR. Address them by making the requested changes. If a comment is not actionable (e.g., "looks good"), skip it.`;
 
+  const prompt = [
+    "## PR Diff (what this PR changed)",
+    "```diff",
+    diff.slice(0, 30000),
+    "```",
+    "",
+    "## Review comments to address",
+    commentBlock,
+  ].join("\n");
+
   const { text, usage, steps } = await runAgent({
     chatFn,
     system: systemPrompt,
-    prompt: commentBlock,
+    prompt,
     tools,
     maxSteps: 10,
     signal: abortController?.signal,

@@ -15,6 +15,7 @@ import {
   installDeps,
   runTests,
   postPRComment,
+  getPRDiff,
   getPRCloseReason,
 } from "../github";
 import type { TrackedPR } from "../types";
@@ -117,7 +118,8 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
             await installDeps(repoDir, repoConfig.install_command);
           }
 
-          const result = await addressComments(repoDir, comments, config, settings);
+          const diff = await getPRDiff(pr.repo, pr.pr_number);
+          const result = await addressComments(repoDir, comments, diff, config, settings);
           costBudget.remaining -= result.costUsd;
           totalCost += result.costUsd;
 
