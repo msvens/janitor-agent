@@ -1,5 +1,5 @@
 import { createTools } from "./tools";
-import { selectBackend, getChatFn, maxStepsForBackend, estimateCost, TOOL_USAGE_HINT } from "./agent";
+import { selectBackend, getChatFn, maxStepsForBackend, estimateCost, modelForBackend, TOOL_USAGE_HINT } from "./agent";
 import { runAgent, type ChatUsage, type StepInfo } from "./loop";
 import { runTests } from "./github";
 import { getPromptForRepo } from "../db/index";
@@ -99,13 +99,16 @@ export async function executeTask(
   repoConfig: RepoConfig,
   onLog: LogFn = console.log,
 ): Promise<{ result: AnalysisResult; costUsd: number }> {
-  const backend = selectBackend(task.aggressiveness, settings);
+  const backend = selectBackend("action", task.aggressiveness, settings);
   const chatFn = getChatFn(backend, config, settings);
   const maxSteps = maxStepsForBackend(backend, settings);
+  const isWeakModel =
+    backend === "ollama" ||
+    (backend === "gemini" && settings.gemini_model.includes("flash-lite"));
 
   onLog(`Task: "${task.title}" — ${task.changes.length} changes (backend=${backend})`);
 
-  const systemPrompt = await buildTaskPrompt(task, backend === "ollama");
+  const systemPrompt = await buildTaskPrompt(task, isWeakModel);
   const tools = createTools(repoPath);
   const stepLogger = makeStepLogger(onLog);
 
@@ -123,8 +126,9 @@ export async function executeTask(
     onLog(`Response: ${text.slice(0, 200)}`);
   }
 
-  // Track usage
-  const totalUsage: ChatUsage = { ...usage };
+  const actionUsage: ChatUsage = { ...usage };
+  const fixUsage: ChatUsage = { inputTokens: 0, outputTokens: 0 };
+  const fixBackend = selectBackend("fix", 0, settings);
 
   // Test after all changes
   if (repoConfig.test_command) {
@@ -136,12 +140,12 @@ export async function executeTask(
       let fixed = false;
 
       for (let attempt = 1; attempt <= maxFixAttempts; attempt++) {
-        onLog(`Tests failed, asking Claude to fix (attempt ${attempt}/${maxFixAttempts})...`);
+        onLog(`Tests failed, asking fix agent to fix (attempt ${attempt}/${maxFixAttempts}, backend=${fixBackend})...`);
         onLog(`Test output: ${testResult.output.slice(0, 1000)}`);
 
         const fixResult = await fixTestFailures(testResult.output, repoPath, config, settings, onLog);
-        totalUsage.inputTokens += fixResult.usage.inputTokens;
-        totalUsage.outputTokens += fixResult.usage.outputTokens;
+        fixUsage.inputTokens += fixResult.usage.inputTokens;
+        fixUsage.outputTokens += fixResult.usage.outputTokens;
 
         testResult = await runTests(repoPath, repoConfig.test_command);
         if (testResult.passed) {
@@ -153,7 +157,9 @@ export async function executeTask(
 
       if (!fixed) {
         onLog(`Tests still failing after ${maxFixAttempts} fix attempts`);
-        const costUsd = estimateCost("claude", totalUsage, config.claude.model);
+        const costUsd =
+          estimateCost(backend, actionUsage, modelForBackend(backend, settings)) +
+          estimateCost(fixBackend, fixUsage, modelForBackend(fixBackend, settings));
         return {
           result: {
             has_changes: false,
@@ -179,8 +185,8 @@ export async function executeTask(
   };
 
   const costUsd =
-    estimateCost("ollama", { inputTokens: 0, outputTokens: 0 }) +
-    estimateCost("claude", totalUsage, config.claude.model);
+    estimateCost(backend, actionUsage, modelForBackend(backend, settings)) +
+    estimateCost(fixBackend, fixUsage, modelForBackend(fixBackend, settings));
   return { result, costUsd };
 }
 
@@ -194,7 +200,7 @@ export async function fixTestFailures(
   const dbPrompt = await getPromptForRepo("", "fix"); // fix prompt is global, not per-repo
   const template = dbPrompt?.content ?? FALLBACK_FIX_PROMPT;
   const prompt = template.replace("{{TEST_OUTPUT}}", testOutput.slice(0, 5000));
-  const chatFn = getChatFn("claude", config, settings);
+  const chatFn = getChatFn(selectBackend("fix", 0, settings), config, settings);
   const tools = createTools(repoPath);
   const stepLogger = makeStepLogger(onLog);
 

@@ -1,7 +1,7 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { findTaskByPR, updateTaskStatus } from "../backlog";
-import { addressComments, estimateCost } from "../agent";
+import { addressComments, estimateCost, modelForBackend, selectBackend } from "../agent";
 import { fixTestFailures } from "../action";
 import { getSettings, getRepoConfig, updatePRStatus, updateJob } from "../../db/index";
 import {
@@ -92,7 +92,9 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
         const status = await checkPRStatus(pr.repo, pr.pr_number);
         if (status.state !== "OPEN" || !status.has_new_comments) continue;
 
-        const comments = await getPRComments(pr.repo, pr.pr_number);
+        const allComments = await getPRComments(pr.repo, pr.pr_number);
+        // Filter out the janitor's own review comments to avoid addressing our own feedback
+        const comments = allComments.filter((c) => !c.startsWith("## Review by janitor-agent"));
         if (comments.length === 0) continue;
 
         log(`PR #${pr.pr_number} in ${pr.repo} has ${comments.length} comment(s), addressing...`);
@@ -115,7 +117,7 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
             await installDeps(repoDir, repoConfig.install_command);
           }
 
-          const result = await addressComments(repoDir, comments, config);
+          const result = await addressComments(repoDir, comments, config, settings);
           costBudget.remaining -= result.costUsd;
           totalCost += result.costUsd;
 
@@ -138,7 +140,8 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
                   log(`Test output: ${testResult.output.slice(0, 1000)}`);
 
                   const fixResult = await fixTestFailures(testResult.output, repoDir, config, settings, log);
-                  const fixCost = estimateCost("claude", fixResult.usage, config.claude.model);
+                  const fixBackend = selectBackend("fix", 0, settings);
+                  const fixCost = estimateCost(fixBackend, fixResult.usage, modelForBackend(fixBackend, settings));
                   costBudget.remaining -= fixCost;
                   totalCost += fixCost;
                   log(`Fix attempt cost: $${fixCost.toFixed(4)}`);

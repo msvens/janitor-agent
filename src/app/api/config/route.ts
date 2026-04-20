@@ -10,7 +10,11 @@ export async function GET() {
     const config = await loadConfig();
     const settings = await getSettings();
     const repos = await getAllRepoConfigs();
-    return NextResponse.json({ config, settings, repos });
+    const env = {
+      anthropicKeyPresent: Boolean(process.env.ANTHROPIC_API_KEY),
+      geminiKeyPresent: Boolean(process.env.GEMINI_API_KEY),
+    };
+    return NextResponse.json({ config, settings, repos, env });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }

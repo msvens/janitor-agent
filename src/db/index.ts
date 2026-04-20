@@ -40,17 +40,44 @@ const DEFAULT_SETTINGS: Settings = {
   max_cost_per_run: 0.50,
   max_open_prs: 5,
   default_aggressiveness: 2,
+  claude_model: "claude-sonnet-4-6",
+  ollama_model: "qwen3-coder",
+  gemini_model: "gemini-2.5-flash",
   ollama_enabled: false,
   ollama_num_ctx: 32768,
   ollama_max_aggressiveness: 2,
   ollama_max_steps: 15,
   claude_max_steps: 15,
+  gemini_max_steps: 15,
   planning_max_steps: 25,
+  planner_backend: "claude",
+  action_backend: "claude",
+  fix_backend: "claude",
+  review_backend: "claude",
   autopilot_enabled: false,
   autopilot_interval_minutes: 10,
 };
 
+export async function hasSettingKey(key: string): Promise<boolean> {
+  const db = getDb();
+  const rows = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
+  return rows.length > 0;
+}
+
+let migrationRan = false;
+async function ensureMigrated(): Promise<void> {
+  if (migrationRan) return;
+  migrationRan = true;
+  try {
+    const { migrateConfigToSettings } = await import("../agent/config");
+    await migrateConfigToSettings();
+  } catch {
+    migrationRan = false;
+  }
+}
+
 export async function getSettings(): Promise<Settings> {
+  await ensureMigrated();
   const db = getDb();
   const rows = await db.select().from(schema.settings);
   const settings = { ...DEFAULT_SETTINGS };

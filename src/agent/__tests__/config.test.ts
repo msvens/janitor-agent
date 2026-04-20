@@ -28,8 +28,7 @@ describe("loadConfig", () => {
 
     const config = await loadConfig();
     expect(config.port).toBe(3003);
-    expect(config.claude.model).toBe("claude-sonnet-4-6");
-    expect(config.ollama.model).toBe("qwen3-coder");
+    expect(config.ollama.host).toBe("http://localhost:11434");
     expect(config.database_url).toContain("postgresql://");
   });
 
@@ -41,11 +40,8 @@ describe("loadConfig", () => {
     writeFileSync(configPath, `
 database_url: postgresql://testhost:5432/testdb
 port: 4000
-claude:
-  model: claude-opus-4-6
 ollama:
   host: http://myhost:11434
-  model: deepseek-coder
 `);
 
     delete process.env.DATABASE_URL;
@@ -56,9 +52,7 @@ ollama:
       const config = await loadConfig();
       expect(config.database_url).toBe("postgresql://testhost:5432/testdb");
       expect(config.port).toBe(4000);
-      expect(config.claude.model).toBe("claude-opus-4-6");
       expect(config.ollama.host).toBe("http://myhost:11434");
-      expect(config.ollama.model).toBe("deepseek-coder");
     } finally {
       rmSync(tmpDir, { recursive: true });
     }

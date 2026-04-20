@@ -193,6 +193,11 @@ export async function getOpenJanitorPRs(repo: string): Promise<number[]> {
   return prs.map((p) => p.number);
 }
 
+export async function getPRDiff(repo: string, prNumber: number): Promise<string> {
+  const { stdout } = await exec("gh", ["pr", "diff", String(prNumber), "--repo", repo]);
+  return stdout;
+}
+
 export async function postPRComment(
   repo: string,
   prNumber: number,

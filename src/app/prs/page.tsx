@@ -1,6 +1,7 @@
 import "@/lib/init";
 import { getAllPRs } from "@/db/index";
 import { runReconcileJob } from "@/agent/jobs/reconcile-job";
+import { ReviewPRButton } from "@/components/prs/review-pr-button";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export default async function PRsPage() {
                 <th className="p-3 hidden md:table-cell">Branch</th>
                 <th className="p-3">Status</th>
                 <th className="p-3 hidden sm:table-cell">Created</th>
+                <th className="p-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -59,6 +61,11 @@ export default async function PRsPage() {
                     </span>
                   </td>
                   <td className="p-3 text-gray-400 hidden sm:table-cell">{new Date(pr.created_at).toLocaleDateString()}</td>
+                  <td className="p-3">
+                    {pr.status === "open" && (
+                      <ReviewPRButton repo={pr.repo} prNumber={pr.pr_number} />
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

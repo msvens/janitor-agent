@@ -5,8 +5,9 @@ import { createJob, updateJob, getSettings, updateSettings, addJobStep } from "@
 import { runPlanJob } from "@/agent/jobs/plan-job";
 import { runActionJob } from "@/agent/jobs/action-job";
 import { runReconcileJob } from "@/agent/jobs/reconcile-job";
+import { runReviewJob } from "@/agent/jobs/review-job";
 
-export type JobType = "plan" | "action" | "reconcile";
+export type JobType = "plan" | "action" | "reconcile" | "review";
 export type JobStatus = "running" | "completed" | "failed" | "aborted";
 
 export interface JobLogEvent {
@@ -102,7 +103,7 @@ class JobManager extends EventEmitter {
 
   // --- Manual job control ---
 
-  async startJob(type: JobType, repo?: string, taskId?: string): Promise<string> {
+  async startJob(type: JobType, repo?: string, taskId?: string, prNumber?: number): Promise<string> {
     if (this.currentJob) {
       throw new Error("A job is already running");
     }
@@ -139,7 +140,7 @@ class JobManager extends EventEmitter {
     };
 
     // Fire-and-forget
-    this.executeJob(jobId, type, repo, taskId, controller, onLog).catch(() => {});
+    this.executeJob(jobId, type, repo, taskId, prNumber, controller, onLog).catch(() => {});
 
     return jobId;
   }
@@ -149,6 +150,7 @@ class JobManager extends EventEmitter {
     type: JobType,
     repo: string | undefined,
     taskId: string | undefined,
+    prNumber: number | undefined,
     controller: AbortController,
     onLog: (msg: string) => void,
   ): Promise<void> {
@@ -169,6 +171,18 @@ class JobManager extends EventEmitter {
         }
         case "reconcile": {
           const result = await runReconcileJob(options);
+          costUsd = result.costUsd;
+          break;
+        }
+        case "review": {
+          if (!repo || !prNumber) throw new Error("Review job requires repo and prNumber");
+          const result = await runReviewJob({
+            repo,
+            prNumber,
+            jobId,
+            onLog,
+            signal: controller.signal,
+          });
           costUsd = result.costUsd;
           break;
         }

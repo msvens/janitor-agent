@@ -16,9 +16,11 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
-  const { type, repo, taskId } = body as { type: JobType; repo?: string; taskId?: string };
+  const { type, repo, taskId, prNumber } = body as {
+    type: JobType; repo?: string; taskId?: string; prNumber?: number;
+  };
 
-  if (!["plan", "action", "reconcile"].includes(type)) {
+  if (!["plan", "action", "reconcile", "review"].includes(type)) {
     return NextResponse.json({ error: "Invalid job type" }, { status: 400 });
   }
 
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const jobId = await jobManager.startJob(type, repo, taskId);
+    const jobId = await jobManager.startJob(type, repo, taskId, prNumber);
     return NextResponse.json({ jobId }, { status: 201 });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
