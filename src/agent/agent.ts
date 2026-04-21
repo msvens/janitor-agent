@@ -172,6 +172,7 @@ export async function addressComments(
   diff: string,
   config: Config,
   settings: Settings,
+  reviewContext?: string[],
   abortController?: AbortController,
 ): Promise<AddressCommentsResult> {
   const { runAgent } = await import("./loop");
@@ -189,15 +190,25 @@ export async function addressComments(
   const dbPrompt = await getDefaultPrompt("address");
   const systemPrompt = dbPrompt?.content ?? `You are a code maintenance agent. A reviewer left comments on your PR. Address them by making the requested changes. If a comment is not actionable (e.g., "looks good"), skip it.`;
 
-  const prompt = [
+  const parts = [
     "## PR Diff (what this PR changed)",
     "```diff",
     diff.slice(0, 30000),
     "```",
     "",
-    "## Review comments to address",
-    commentBlock,
-  ].join("\n");
+  ];
+
+  if (reviewContext && reviewContext.length > 0) {
+    parts.push(
+      "## Prior review (for reference only — do not address directly)",
+      ...reviewContext.map((c) => c.slice(0, 5000)),
+      "",
+    );
+  }
+
+  parts.push("## Review comments to address", commentBlock);
+
+  const prompt = parts.join("\n");
 
   const { text, usage, steps } = await runAgent({
     chatFn,

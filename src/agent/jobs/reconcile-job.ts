@@ -94,7 +94,7 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
         if (status.state !== "OPEN" || !status.has_new_comments) continue;
 
         const allComments = await getPRComments(pr.repo, pr.pr_number);
-        // Filter out the janitor's own review comments to avoid addressing our own feedback
+        const reviewContext = allComments.filter((c) => c.startsWith("## Review by janitor-agent"));
         const comments = allComments.filter((c) => !c.startsWith("## Review by janitor-agent"));
         if (comments.length === 0) continue;
 
@@ -119,7 +119,7 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
           }
 
           const diff = await getPRDiff(pr.repo, pr.pr_number);
-          const result = await addressComments(repoDir, comments, diff, config, settings);
+          const result = await addressComments(repoDir, comments, diff, config, settings, reviewContext);
           costBudget.remaining -= result.costUsd;
           totalCost += result.costUsd;
 
