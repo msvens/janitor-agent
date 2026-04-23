@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { ArrowRightStartOnRectangleIcon } from "@heroicons/react/24/outline";
 import { NAV_ITEMS } from "./sidebar";
+import { SignoutDialog } from "@/components/signout-dialog";
 
 interface MobileNavProps {
   isOpen: boolean;
@@ -13,10 +15,13 @@ interface MobileNavProps {
 
 export function MobileNav({ isOpen, onClose }: MobileNavProps) {
   const pathname = usePathname();
+  const { data: session } = useSession();
+  const user = session?.user;
+  const [signoutOpen, setSignoutOpen] = useState(false);
 
-  async function handleLogout() {
+  function handleLogoutClick() {
     onClose();
-    await signOut({ callbackUrl: "/login" });
+    setSignoutOpen(true);
   }
 
   return (
@@ -38,7 +43,7 @@ export function MobileNav({ isOpen, onClose }: MobileNavProps) {
         <div className="p-4 border-b border-gray-800">
           <h1 className="text-lg font-semibold text-gray-100">Janitor Agent</h1>
         </div>
-        <nav className="flex-1 p-2 space-y-1">
+        <nav className="p-2 space-y-1">
           {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -59,9 +64,19 @@ export function MobileNav({ isOpen, onClose }: MobileNavProps) {
             );
           })}
         </nav>
-        <div className="p-2 border-t border-gray-800">
+        <div className="mx-2 border-t border-gray-800" />
+        <div className="p-2 space-y-1">
+          {user?.githubLogin && (
+            <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300">
+              {user.image && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.image} alt="" className="w-5 h-5 rounded-full" />
+              )}
+              <span className="truncate">@{user.githubLogin}</span>
+            </div>
+          )}
           <button
-            onClick={handleLogout}
+            onClick={handleLogoutClick}
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition-colors w-full"
           >
             <ArrowRightStartOnRectangleIcon className="w-5 h-5" />
@@ -69,6 +84,7 @@ export function MobileNav({ isOpen, onClose }: MobileNavProps) {
           </button>
         </div>
       </aside>
+      <SignoutDialog open={signoutOpen} onClose={() => setSignoutOpen(false)} />
     </>
   );
 }

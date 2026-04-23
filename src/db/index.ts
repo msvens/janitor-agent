@@ -1,6 +1,6 @@
 import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
-import { eq, and, asc, desc } from "drizzle-orm";
+import { eq, and, asc, desc, inArray, or } from "drizzle-orm";
 import * as schema from "./schema";
 import { decryptToken } from "@/lib/token-crypto";
 import type {
@@ -847,5 +847,108 @@ export async function getUserByGithubId(githubId: string): Promise<UserRow | nul
 export async function deleteUserByGithubId(githubId: string): Promise<void> {
   const db = getDb();
   await db.delete(schema.users).where(eq(schema.users.githubId, githubId));
+}
+
+export interface OwnedSummary {
+  repos: number;
+  tasks: number;
+  jobs: number;
+  prs: number;
+}
+
+export async function getUserOwnedSummary(githubId: string): Promise<OwnedSummary> {
+  const db = getDb();
+  const user = await getUserByGithubId(githubId);
+  if (!user) return { repos: 0, tasks: 0, jobs: 0, prs: 0 };
+
+  const userRepos = await db
+    .select({ name: schema.repos.name })
+    .from(schema.repos)
+    .where(eq(schema.repos.addedByUserId, user.id));
+  const repoNames = userRepos.map((r) => r.name);
+  if (repoNames.length === 0) return { repos: 0, tasks: 0, jobs: 0, prs: 0 };
+
+  const [tasks, prs, jobs] = await Promise.all([
+    db.select({ id: schema.tasks.id }).from(schema.tasks).where(inArray(schema.tasks.repo, repoNames)),
+    db.select({ id: schema.trackedPrs.id }).from(schema.trackedPrs).where(inArray(schema.trackedPrs.repo, repoNames)),
+    db.select({ id: schema.jobs.id }).from(schema.jobs).where(inArray(schema.jobs.repo, repoNames)),
+  ]);
+
+  return {
+    repos: repoNames.length,
+    tasks: tasks.length,
+    jobs: jobs.length,
+    prs: prs.length,
+  };
+}
+
+export async function deleteUserAndRepos(githubId: string): Promise<{
+  userDeleted: boolean;
+  reposDeleted: string[];
+  tasksDeleted: number;
+  jobsDeleted: number;
+  prsDeleted: number;
+}> {
+  const db = getDb();
+  const user = await getUserByGithubId(githubId);
+  if (!user) {
+    return { userDeleted: false, reposDeleted: [], tasksDeleted: 0, jobsDeleted: 0, prsDeleted: 0 };
+  }
+
+  const userRepos = await db
+    .select({ name: schema.repos.name })
+    .from(schema.repos)
+    .where(eq(schema.repos.addedByUserId, user.id));
+  const repoNames = userRepos.map((r) => r.name);
+
+  let tasksDeleted = 0;
+  let jobsDeleted = 0;
+  let prsDeleted = 0;
+
+  if (repoNames.length > 0) {
+    const userTasks = await db
+      .select({ id: schema.tasks.id })
+      .from(schema.tasks)
+      .where(inArray(schema.tasks.repo, repoNames));
+    const taskIds = userTasks.map((t) => t.id);
+
+    // Jobs first (they reference tasks and repos). job_steps cascade via FK.
+    const jobFilter =
+      taskIds.length > 0
+        ? or(inArray(schema.jobs.repo, repoNames), inArray(schema.jobs.taskId, taskIds))
+        : inArray(schema.jobs.repo, repoNames);
+    const deletedJobs = await db
+      .delete(schema.jobs)
+      .where(jobFilter)
+      .returning({ id: schema.jobs.id });
+    jobsDeleted = deletedJobs.length;
+
+    // tracked_prs rows — these are janitor's INTERNAL tracking records.
+    // We do NOT close or touch the actual PRs on GitHub — the human handles those.
+    const deletedPrs = await db
+      .delete(schema.trackedPrs)
+      .where(inArray(schema.trackedPrs.repo, repoNames))
+      .returning({ id: schema.trackedPrs.id });
+    prsDeleted = deletedPrs.length;
+
+    const deletedTasks = await db
+      .delete(schema.tasks)
+      .where(inArray(schema.tasks.repo, repoNames))
+      .returning({ id: schema.tasks.id });
+    tasksDeleted = deletedTasks.length;
+
+    await db.delete(schema.repos).where(inArray(schema.repos.name, repoNames));
+  }
+
+  // User last (repos referenced it via added_by_user_id).
+  await db.delete(schema.users).where(eq(schema.users.id, user.id));
+
+  return {
+    userDeleted: true,
+    reposDeleted: repoNames,
+    tasksDeleted,
+    jobsDeleted,
+    prsDeleted,
+  };
 }
 

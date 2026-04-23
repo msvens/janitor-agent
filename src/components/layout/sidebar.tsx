@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { signOut, useSession } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import {
   HomeIcon,
   QueueListIcon,
@@ -13,6 +14,7 @@ import {
   ArrowRightStartOnRectangleIcon,
 } from "@heroicons/react/24/outline";
 import { AutopilotButton } from "./autopilot-button";
+import { SignoutDialog } from "@/components/signout-dialog";
 
 export const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: HomeIcon },
@@ -27,10 +29,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const user = session?.user;
-
-  async function handleLogout() {
-    await signOut({ callbackUrl: "/login" });
-  }
+  const [signoutOpen, setSignoutOpen] = useState(false);
 
   return (
     <aside className="hidden md:flex w-56 bg-gray-900 border-r border-gray-800 flex-col">
@@ -72,13 +71,14 @@ export function Sidebar() {
           </div>
         )}
         <button
-          onClick={handleLogout}
+          onClick={() => setSignoutOpen(true)}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition-colors w-full"
         >
           <ArrowRightStartOnRectangleIcon className="w-5 h-5" />
           Sign out
         </button>
       </div>
+      <SignoutDialog open={signoutOpen} onClose={() => setSignoutOpen(false)} />
     </aside>
   );
 }
