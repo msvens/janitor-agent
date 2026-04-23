@@ -1,5 +1,16 @@
 import { pgTable, text, integer, real, uniqueIndex, index, serial, boolean } from "drizzle-orm/pg-core";
 
+// --- Users (GitHub OAuth identities + encrypted access tokens) ---
+
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  githubId: text("github_id").notNull().unique(),
+  githubLogin: text("github_login").notNull(),
+  encryptedAccessToken: text("encrypted_access_token").notNull(),
+  tokenUpdatedAt: text("token_updated_at").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
 // --- Settings (key-value, runtime config from UI) ---
 
 export const settings = pgTable("settings", {
@@ -31,6 +42,7 @@ export const repos = pgTable("repos", {
   lastPlanned: text("last_planned"),
   planPromptId: text("plan_prompt_id").references(() => prompts.id),
   actionPromptId: text("action_prompt_id").references(() => prompts.id),
+  addedByUserId: integer("added_by_user_id").references(() => users.id),
 });
 
 // --- Tasks ---

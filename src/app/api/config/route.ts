@@ -1,5 +1,15 @@
 import { loadConfig } from "@/agent/config";
-import { getSettings, updateSettings, getAllRepoConfigs, upsertRepo, deleteRepo } from "@/db/index";
+import {
+  getSettings,
+  updateSettings,
+  getAllRepoConfigs,
+  getAllRepoConfigsWithOwners,
+  upsertRepo,
+  deleteRepo,
+  getRepo,
+  getUserByGithubId,
+} from "@/db/index";
+import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +19,7 @@ export async function GET() {
   try {
     const config = await loadConfig();
     const settings = await getSettings();
-    const repos = await getAllRepoConfigs();
+    const repos = await getAllRepoConfigsWithOwners();
     const env = {
       anthropicKeyPresent: Boolean(process.env.ANTHROPIC_API_KEY),
       geminiKeyPresent: Boolean(process.env.GEMINI_API_KEY),
@@ -41,8 +51,17 @@ export async function PUT(request: NextRequest) {
         }
       }
 
+      // Identify the current user so new repos are attributed to them.
+      const session = await auth();
+      const githubId = session?.user?.githubId;
+      const currentUser = githubId ? await getUserByGithubId(githubId) : null;
+
       // Upsert all provided repos
       for (const repo of body.repos) {
+        const existingRow = await getRepo(repo.name);
+        // Only set addedByUserId on insert (new repos). Don't reassign ownership on update.
+        const addedByUserId =
+          existingRow == null && currentUser ? currentUser.id : undefined;
         await upsertRepo({
           name: repo.name,
           aggressiveness: repo.aggressiveness ?? 2,
@@ -51,6 +70,7 @@ export async function PUT(request: NextRequest) {
           testCommand: repo.test_command,
           planPromptId: repo.plan_prompt_id || null,
           actionPromptId: repo.action_prompt_id || null,
+          addedByUserId,
         });
       }
     }

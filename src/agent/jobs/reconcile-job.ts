@@ -3,7 +3,8 @@ import { loadState, saveState } from "../state";
 import { findTaskByPR, updateTaskStatus } from "../backlog";
 import { addressComments, estimateCost, modelForBackend, selectBackend } from "../agent";
 import { fixTestFailures } from "../action";
-import { getSettings, getRepoConfig, updatePRStatus, updateJob } from "../../db/index";
+import { getSettings, getRepoConfig, getRepoOwnerToken, updatePRStatus, updateJob } from "../../db/index";
+import { runWithToken, ghEnv } from "../auth-context";
 import {
   cloneRepo,
   cleanupRepo,
@@ -50,34 +51,37 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
 
   for (const pr of state.open_prs) {
     if (signal?.aborted) break;
-    try {
-      const status = await checkPRStatus(pr.repo, pr.pr_number);
-      if (status.state === "OPEN") {
-        pr.last_checked = new Date().toISOString();
+    const ownerToken = await getRepoOwnerToken(pr.repo);
+    await runWithToken(ownerToken, async () => {
+      try {
+        const status = await checkPRStatus(pr.repo, pr.pr_number);
+        if (status.state === "OPEN") {
+          pr.last_checked = new Date().toISOString();
+          remaining.push(pr);
+        } else {
+          const prStatus = status.state === "MERGED" ? "merged" : "closed";
+          log(`PR #${pr.pr_number} in ${pr.repo} is ${status.state}`);
+          // Capture close reason from the last comment on the PR
+          let closeReason: string | undefined;
+          if (prStatus === "closed") {
+            closeReason = await getPRCloseReason(pr.repo, pr.pr_number);
+            if (closeReason) log(`Close reason: ${closeReason.slice(0, 200)}`);
+          }
+          await updatePRStatus(pr.repo, pr.pr_number, prStatus, closeReason);
+          const task = await findTaskByPR(pr.repo, pr.pr_number);
+          if (task) {
+            const taskStatus = status.state === "MERGED" ? "completed" : "failed";
+            await updateTaskStatus(pr.repo, task.id, taskStatus);
+            log(`Marked task "${task.title}" as ${taskStatus}`);
+          }
+          await deleteRemoteBranch(pr.repo, pr.branch);
+          reconciled++;
+        }
+      } catch (err) {
+        log(`Failed to check PR #${pr.pr_number} in ${pr.repo}: ${err}`);
         remaining.push(pr);
-      } else {
-        const prStatus = status.state === "MERGED" ? "merged" : "closed";
-        log(`PR #${pr.pr_number} in ${pr.repo} is ${status.state}`);
-        // Capture close reason from the last comment on the PR
-        let closeReason: string | undefined;
-        if (prStatus === "closed") {
-          closeReason = await getPRCloseReason(pr.repo, pr.pr_number);
-          if (closeReason) log(`Close reason: ${closeReason.slice(0, 200)}`);
-        }
-        await updatePRStatus(pr.repo, pr.pr_number, prStatus, closeReason);
-        const task = await findTaskByPR(pr.repo, pr.pr_number);
-        if (task) {
-          const taskStatus = status.state === "MERGED" ? "completed" : "failed";
-          await updateTaskStatus(pr.repo, task.id, taskStatus);
-          log(`Marked task "${task.title}" as ${taskStatus}`);
-        }
-        await deleteRemoteBranch(pr.repo, pr.branch);
-        reconciled++;
       }
-    } catch (err) {
-      log(`Failed to check PR #${pr.pr_number} in ${pr.repo}: ${err}`);
-      remaining.push(pr);
-    }
+    });
   }
 
   state.open_prs = remaining;
@@ -89,14 +93,16 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
       if (signal?.aborted) break;
       if (costBudget.remaining <= 0) break;
 
+      const ownerToken = await getRepoOwnerToken(pr.repo);
+      await runWithToken(ownerToken, async () => {
       try {
         const status = await checkPRStatus(pr.repo, pr.pr_number);
-        if (status.state !== "OPEN" || !status.has_new_comments) continue;
+        if (status.state !== "OPEN" || !status.has_new_comments) return;
 
         const allComments = await getPRComments(pr.repo, pr.pr_number);
         const reviewContext = allComments.filter((c) => c.startsWith("## Review by janitor-agent"));
         const comments = allComments.filter((c) => !c.startsWith("## Review by janitor-agent"));
-        if (comments.length === 0) continue;
+        if (comments.length === 0) return;
 
         log(`PR #${pr.pr_number} in ${pr.repo} has ${comments.length} comment(s), addressing...`);
         for (const c of comments) {
@@ -108,8 +114,8 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
           const { execFile } = await import("node:child_process");
           const { promisify } = await import("node:util");
           const exec = promisify(execFile);
-          await exec("git", ["fetch", "origin", pr.branch], { cwd: repoDir });
-          await exec("git", ["checkout", "-b", pr.branch, "FETCH_HEAD"], { cwd: repoDir });
+          await exec("git", ["fetch", "origin", pr.branch], { cwd: repoDir, env: ghEnv() });
+          await exec("git", ["checkout", "-b", pr.branch, "FETCH_HEAD"], { cwd: repoDir, env: ghEnv() });
 
           // Install deps if configured
           const repoConfig = await getRepoConfig(pr.repo);
@@ -168,12 +174,13 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
                     testResult.output.slice(0, 3000),
                     "```",
                   ].join("\n");
+
                   try {
                     await postPRComment(pr.repo, pr.pr_number, commentBody);
                   } catch (err) {
                     log(`Failed to post PR comment: ${err}`);
                   }
-                  continue;
+                  return;
                 }
               } else {
                 log(`Tests pass`);
@@ -192,6 +199,7 @@ export async function runReconcileJob(options: ReconcileJobOptions = {}): Promis
       } catch (err) {
         log(`Error handling comments for PR #${pr.pr_number}: ${err}`);
       }
+      });
     }
   }
 

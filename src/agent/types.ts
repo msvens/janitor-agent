@@ -42,6 +42,7 @@ export interface RepoConfig {
   test_command?: string;
   plan_prompt_id?: string;
   action_prompt_id?: string;
+  added_by_login?: string | null;
 }
 
 export interface TrackedPR {

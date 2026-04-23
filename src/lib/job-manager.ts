@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import "@/lib/init";
+import { ensureInitialized } from "@/lib/init";
 import { createJob, updateJob, getSettings, updateSettings, addJobStep } from "@/db/index";
 import { runPlanJob } from "@/agent/jobs/plan-job";
 import { runActionJob } from "@/agent/jobs/action-job";
@@ -104,6 +104,9 @@ class JobManager extends EventEmitter {
   // --- Manual job control ---
 
   async startJob(type: JobType, repo?: string, taskId?: string, prNumber?: number): Promise<string> {
+    // Wait for init's stale-job cleanup before we write status='running'.
+    await ensureInitialized();
+
     if (this.currentJob) {
       throw new Error("A job is already running");
     }

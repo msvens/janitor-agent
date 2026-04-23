@@ -2,7 +2,8 @@ import { loadConfig } from "../config";
 import { selectBackend, getChatFn, maxStepsForBackend, estimateCost, modelForBackend } from "../agent";
 import { createReadOnlyTools, type StepTracker } from "../tools";
 import { runAgent, type StepInfo } from "../loop";
-import { getSettings, getDefaultPrompt, updateJob } from "../../db/index";
+import { getSettings, getDefaultPrompt, getRepoOwnerToken, updateJob } from "../../db/index";
+import { runWithToken, ghEnv } from "../auth-context";
 import {
   cloneRepo,
   cleanupRepo,
@@ -50,6 +51,22 @@ export async function runReviewJob(options: ReviewJobOptions): Promise<ReviewJob
   const { repo, prNumber, jobId, onLog, signal } = options;
   const log = onLog ?? ((msg: string) => console.log(`[review] ${msg}`));
 
+  const ownerToken = await getRepoOwnerToken(repo);
+  if (!ownerToken && !process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
+    log(`Cannot review ${repo}: no owner token stored and no GH_TOKEN fallback set`);
+    return { costUsd: 0 };
+  }
+
+  return runWithToken(ownerToken, async () => runReviewJobInner(options, log, signal));
+}
+
+async function runReviewJobInner(
+  options: ReviewJobOptions,
+  log: (msg: string) => void,
+  signal: AbortSignal | undefined,
+): Promise<ReviewJobResult> {
+  const { repo, prNumber, jobId } = options;
+
   const config = await loadConfig();
   const settings = await getSettings();
   const backend = selectBackend("review", 0, settings);
@@ -76,12 +93,14 @@ export async function runReviewJob(options: ReviewJobOptions): Promise<ReviewJob
     const { execFile } = await import("node:child_process");
     const { promisify } = await import("node:util");
     const exec = promisify(execFile);
-    const { stdout: prJson } = await exec("gh", [
-      "pr", "view", String(prNumber), "--repo", repo, "--json", "headRefName",
-    ]);
+    const { stdout: prJson } = await exec(
+      "gh",
+      ["pr", "view", String(prNumber), "--repo", repo, "--json", "headRefName"],
+      { env: ghEnv() },
+    );
     const branchName = JSON.parse(prJson).headRefName;
-    await exec("git", ["fetch", "origin", branchName], { cwd: repoDir });
-    await exec("git", ["checkout", "-b", branchName, "FETCH_HEAD"], { cwd: repoDir });
+    await exec("git", ["fetch", "origin", branchName], { cwd: repoDir, env: ghEnv() });
+    await exec("git", ["checkout", "-b", branchName, "FETCH_HEAD"], { cwd: repoDir, env: ghEnv() });
 
     const changedFiles = extractChangedFiles(diff);
     log(`Changed files: ${changedFiles.join(", ")}`);

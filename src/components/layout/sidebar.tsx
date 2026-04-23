@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
 import {
   HomeIcon,
   QueueListIcon,
@@ -25,12 +25,11 @@ export const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
+  const { data: session } = useSession();
+  const user = session?.user;
 
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
+    await signOut({ callbackUrl: "/login" });
   }
 
   return (
@@ -38,7 +37,7 @@ export function Sidebar() {
       <div className="p-4 border-b border-gray-800">
         <h1 className="text-lg font-semibold text-gray-100">Janitor Agent</h1>
       </div>
-      <nav className="flex-1 p-2 space-y-1">
+      <nav className="p-2 space-y-1">
         <div className="mb-2">
           <AutopilotButton />
         </div>
@@ -61,7 +60,17 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="p-2 border-t border-gray-800">
+      <div className="mx-2 border-t border-gray-800" />
+      <div className="p-2 space-y-1">
+        {user?.githubLogin && (
+          <div className="flex items-center gap-2 px-3 py-2 text-sm text-gray-300">
+            {user.image && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={user.image} alt="" className="w-5 h-5 rounded-full" />
+            )}
+            <span className="truncate">@{user.githubLogin}</span>
+          </div>
+        )}
         <button
           onClick={handleLogout}
           className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 transition-colors w-full"
