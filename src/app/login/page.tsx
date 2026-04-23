@@ -1,84 +1,52 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
+import { signIn } from "next-auth/react";
 
-export default function LoginPage() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.error ?? "Login failed");
-        return;
-      }
-
-      router.push("/");
-      router.refresh();
-    } catch {
-      setError("Network error");
-    } finally {
-      setLoading(false);
-    }
-  }
+function LoginContent() {
+  const searchParams = useSearchParams();
+  const error = searchParams.get("error");
 
   return (
     <div className="fixed inset-0 z-50 bg-gray-950/50 backdrop-blur-sm flex items-center justify-center">
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-8 w-full max-w-sm">
-        <h1 className="text-2xl font-bold text-gray-100 mb-6 text-center">
+        <h1 className="text-2xl font-bold text-gray-100 mb-2 text-center">
           Janitor Agent
         </h1>
+        <p className="text-sm text-gray-400 mb-6 text-center">
+          Sign in with your GitHub account to continue.
+        </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Username</label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:border-blue-500"
-              autoFocus
-            />
-          </div>
+        {error === "AccessDenied" && (
+          <p className="text-sm text-red-400 mb-4 text-center">
+            Access denied — your GitHub account is not on the allowlist.
+          </p>
+        )}
+        {error && error !== "AccessDenied" && (
+          <p className="text-sm text-red-400 mb-4 text-center">
+            Sign-in failed. Try again.
+          </p>
+        )}
 
-          <div>
-            <label className="block text-sm text-gray-400 mb-1">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          {error && (
-            <p className="text-sm text-red-400">{error}</p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading || !username || !password}
-            className="w-full bg-blue-600 hover:bg-blue-500 text-white font-medium py-2 rounded-lg disabled:opacity-50 transition-colors"
-          >
-            {loading ? "Signing in..." : "Sign in"}
-          </button>
-        </form>
+        <button
+          onClick={() => signIn("github", { callbackUrl: "/" })}
+          className="w-full bg-gray-800 hover:bg-gray-700 border border-gray-700 text-gray-100 font-medium py-2.5 rounded-lg transition-colors flex items-center justify-center gap-2"
+        >
+          <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+          </svg>
+          Sign in with GitHub
+        </button>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
   );
 }

@@ -11,6 +11,7 @@ interface RepoConfig {
   test_command?: string;
   plan_prompt_id?: string;
   action_prompt_id?: string;
+  added_by_login?: string | null;
 }
 
 interface Prompt {
@@ -405,6 +406,23 @@ export default function ConfigPage() {
           <div className="space-y-4">
             {repos.map((repo, i) => (
               <div key={i} className="bg-gray-800/50 rounded-lg p-4">
+                <div className="text-xs mb-3 flex items-center gap-1.5">
+                  {repo.added_by_login ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`https://github.com/${repo.added_by_login}.png?size=32`}
+                        alt=""
+                        className="w-4 h-4 rounded-full"
+                      />
+                      <span className="text-gray-500">
+                        Owner: <span className="text-gray-300">@{repo.added_by_login}</span>
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-yellow-600">No owner — uses GH_TOKEN fallback</span>
+                  )}
+                </div>
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <Input label="Name (owner/repo)" value={repo.name} onChange={(v) => updateRepo(i, "name", v)} />

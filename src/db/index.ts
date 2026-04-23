@@ -2,6 +2,7 @@ import pg from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { eq, and, asc, desc } from "drizzle-orm";
 import * as schema from "./schema";
+import { decryptToken } from "@/lib/token-crypto";
 import type {
   BacklogTask,
   RepoBacklog,
@@ -236,8 +237,22 @@ export async function upsertRepo(repo: {
   testCommand?: string;
   planPromptId?: string | null;
   actionPromptId?: string | null;
+  addedByUserId?: number | null;
 }) {
   const db = getDb();
+  // Only set addedByUserId on insert, and only on update if explicitly provided.
+  // Callers that omit it (e.g. config PUT that doesn't know the current user) leave ownership untouched.
+  const updateSet: Record<string, unknown> = {
+    aggressiveness: repo.aggressiveness,
+    branch: repo.branch,
+    installCommand: repo.installCommand ?? null,
+    testCommand: repo.testCommand ?? null,
+    planPromptId: repo.planPromptId ?? null,
+    actionPromptId: repo.actionPromptId ?? null,
+  };
+  if (repo.addedByUserId !== undefined) {
+    updateSet.addedByUserId = repo.addedByUserId;
+  }
   await db.insert(schema.repos)
     .values({
       name: repo.name,
@@ -247,18 +262,31 @@ export async function upsertRepo(repo: {
       testCommand: repo.testCommand ?? null,
       planPromptId: repo.planPromptId ?? null,
       actionPromptId: repo.actionPromptId ?? null,
+      addedByUserId: repo.addedByUserId ?? null,
     })
     .onConflictDoUpdate({
       target: schema.repos.name,
-      set: {
-        aggressiveness: repo.aggressiveness,
-        branch: repo.branch,
-        installCommand: repo.installCommand ?? null,
-        testCommand: repo.testCommand ?? null,
-        planPromptId: repo.planPromptId ?? null,
-        actionPromptId: repo.actionPromptId ?? null,
-      },
+      set: updateSet,
     });
+}
+
+export async function getRepoOwnerToken(repoName: string): Promise<string | null> {
+  const db = getDb();
+  const rows = await db
+    .select({ encrypted: schema.users.encryptedAccessToken, login: schema.users.githubLogin })
+    .from(schema.repos)
+    .innerJoin(schema.users, eq(schema.repos.addedByUserId, schema.users.id))
+    .where(eq(schema.repos.name, repoName))
+    .limit(1);
+  if (!rows[0]) return null;
+  try {
+    return decryptToken(rows[0].encrypted);
+  } catch (err) {
+    console.error(
+      `[db] Failed to decrypt token for ${repoName} (owner @${rows[0].login}): ${(err as Error).message}`,
+    );
+    return null;
+  }
 }
 
 export async function getRepo(name: string) {
@@ -297,6 +325,23 @@ export async function getRepoConfig(name: string): Promise<RepoConfig | null> {
 export async function getAllRepoConfigs(): Promise<RepoConfig[]> {
   const rows = await getAllRepos();
   return rows.map(repoRowToConfig);
+}
+
+export async function getAllRepoConfigsWithOwners(): Promise<
+  (RepoConfig & { added_by_login: string | null })[]
+> {
+  const db = getDb();
+  const rows = await db
+    .select({
+      repo: schema.repos,
+      login: schema.users.githubLogin,
+    })
+    .from(schema.repos)
+    .leftJoin(schema.users, eq(schema.repos.addedByUserId, schema.users.id));
+  return rows.map(({ repo, login }) => ({
+    ...repoRowToConfig(repo),
+    added_by_login: login ?? null,
+  }));
 }
 
 export async function updateRepoLastPlanned(name: string) {
@@ -750,5 +795,57 @@ export async function getJobSteps(jobId: string) {
     .from(schema.jobSteps)
     .where(eq(schema.jobSteps.jobId, jobId))
     .orderBy(asc(schema.jobSteps.stepNumber));
+}
+
+// --- Users ---
+
+export interface UserRow {
+  id: number;
+  githubId: string;
+  githubLogin: string;
+  encryptedAccessToken: string;
+  tokenUpdatedAt: string;
+  createdAt: string;
+}
+
+export async function upsertUser(input: {
+  githubId: string;
+  githubLogin: string;
+  encryptedAccessToken: string;
+}): Promise<void> {
+  const db = getDb();
+  const now = new Date().toISOString();
+  await db
+    .insert(schema.users)
+    .values({
+      githubId: input.githubId,
+      githubLogin: input.githubLogin,
+      encryptedAccessToken: input.encryptedAccessToken,
+      tokenUpdatedAt: now,
+      createdAt: now,
+    })
+    .onConflictDoUpdate({
+      target: schema.users.githubId,
+      set: {
+        githubLogin: input.githubLogin,
+        encryptedAccessToken: input.encryptedAccessToken,
+        tokenUpdatedAt: now,
+      },
+    });
+}
+
+export async function getUserByGithubId(githubId: string): Promise<UserRow | null> {
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.users)
+    .where(eq(schema.users.githubId, githubId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function deleteUserByGithubId(githubId: string): Promise<void> {
+  const db = getDb();
+  await db.delete(schema.users).where(eq(schema.users.githubId, githubId));
 }
 

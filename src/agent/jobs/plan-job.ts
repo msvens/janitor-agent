@@ -2,7 +2,8 @@ import { loadConfig } from "../config";
 import { loadBacklog, addTasks } from "../backlog";
 import { planRepo } from "../planner";
 import { ensureWorkspace } from "../github";
-import { getSettings, getAllRepoConfigs, updateJob } from "../../db/index";
+import { getSettings, getAllRepoConfigs, getRepoOwnerToken, updateJob } from "../../db/index";
+import { runWithToken } from "../auth-context";
 
 export interface PlanJobOptions {
   repo?: string;
@@ -43,39 +44,47 @@ export async function runPlanJob(options: PlanJobOptions = {}): Promise<PlanJobR
       break;
     }
 
-    const backlog = await loadBacklog(repoConfig.name);
-    const pending = backlog.tasks.filter((t) => t.status === "pending").length;
-    if (pending > 0) {
-      log(`${repoConfig.name}: ${pending} existing pending tasks (will find new ones)`);
+    const ownerToken = await getRepoOwnerToken(repoConfig.name);
+    if (!ownerToken && !process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
+      log(`Skipping ${repoConfig.name}: no owner token stored and no GH_TOKEN fallback set`);
+      continue;
     }
 
-    const repoDir = await ensureWorkspace(
-      repoConfig.name,
-      config.workspace_dir.replace("~", process.env.HOME ?? "~"),
-      repoConfig.branch,
-    );
-
-    try {
-      const { tasks, costUsd } = await planRepo(repoDir, repoConfig, config, settings, backlog, log);
-      costBudget.remaining -= costUsd;
-      totalCost += costUsd;
-
-      if (tasks.length > 0) {
-        await addTasks(repoConfig.name, tasks);
-        totalTasksAdded += tasks.length;
-        log(`Added ${tasks.length} tasks to backlog for ${repoConfig.name}`);
-        if (currentJobId) {
-          await updateJob(currentJobId, { summary: `Found ${tasks.length} tasks for ${repoConfig.name}` });
-        }
-      } else {
-        log(`No tasks found for ${repoConfig.name}`);
-        if (currentJobId) {
-          await updateJob(currentJobId, { summary: `No tasks found for ${repoConfig.name}` });
-        }
+    await runWithToken(ownerToken, async () => {
+      const backlog = await loadBacklog(repoConfig.name);
+      const pending = backlog.tasks.filter((t) => t.status === "pending").length;
+      if (pending > 0) {
+        log(`${repoConfig.name}: ${pending} existing pending tasks (will find new ones)`);
       }
-    } catch (err) {
-      log(`Error planning ${repoConfig.name}: ${err}`);
-    }
+
+      const repoDir = await ensureWorkspace(
+        repoConfig.name,
+        config.workspace_dir.replace("~", process.env.HOME ?? "~"),
+        repoConfig.branch,
+      );
+
+      try {
+        const { tasks, costUsd } = await planRepo(repoDir, repoConfig, config, settings, backlog, log);
+        costBudget.remaining -= costUsd;
+        totalCost += costUsd;
+
+        if (tasks.length > 0) {
+          await addTasks(repoConfig.name, tasks);
+          totalTasksAdded += tasks.length;
+          log(`Added ${tasks.length} tasks to backlog for ${repoConfig.name}`);
+          if (currentJobId) {
+            await updateJob(currentJobId, { summary: `Found ${tasks.length} tasks for ${repoConfig.name}` });
+          }
+        } else {
+          log(`No tasks found for ${repoConfig.name}`);
+          if (currentJobId) {
+            await updateJob(currentJobId, { summary: `No tasks found for ${repoConfig.name}` });
+          }
+        }
+      } catch (err) {
+        log(`Error planning ${repoConfig.name}: ${err}`);
+      }
+    });
   }
 
   log("Planning done");

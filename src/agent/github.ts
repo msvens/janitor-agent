@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { mkdtemp, rm, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { ghEnv, currentToken } from "./auth-context";
 
 const exec = promisify(execFile);
 const execShell = promisify(execCb);
@@ -25,17 +26,17 @@ export async function ensureWorkspace(
     await updateWorkspace(repoDir, branch);
   } catch {
     log(`Cloning ${repo} into workspace ${repoDir}`);
-    await exec("gh", ["repo", "clone", repo, repoDir]);
-    await exec("git", ["checkout", `origin/${branch}`], { cwd: repoDir });
+    await exec("gh", ["repo", "clone", repo, repoDir], { env: ghEnv() });
+    await exec("git", ["checkout", `origin/${branch}`], { cwd: repoDir, env: ghEnv() });
   }
 
   return repoDir;
 }
 
 export async function updateWorkspace(repoDir: string, branch: string): Promise<void> {
-  await exec("git", [...gitAuthArgs(), "fetch", "origin"], { cwd: repoDir });
-  await exec("git", ["checkout", `origin/${branch}`], { cwd: repoDir });
-  await exec("git", ["clean", "-fd"], { cwd: repoDir });
+  await exec("git", [...gitAuthArgs(), "fetch", "origin"], { cwd: repoDir, env: ghEnv() });
+  await exec("git", ["checkout", `origin/${branch}`], { cwd: repoDir, env: ghEnv() });
+  await exec("git", ["clean", "-fd"], { cwd: repoDir, env: ghEnv() });
 }
 
 export async function installDeps(
@@ -44,7 +45,7 @@ export async function installDeps(
 ): Promise<void> {
   if (!installCommand) return;
   log(`Installing dependencies: ${installCommand}`);
-  await execShell(installCommand, { cwd: repoDir, timeout: 120_000 });
+  await execShell(installCommand, { cwd: repoDir, timeout: 120_000, env: ghEnv() });
 }
 
 export async function runTests(
@@ -64,7 +65,7 @@ export async function runTests(
       cwd: repoDir,
       timeout: 120_000,
       maxBuffer: 5 * 1024 * 1024,
-      env: { ...process.env, NODE_ENV: "production" },
+      env: ghEnv({ NODE_ENV: "production" }),
     });
     const output = (stdout + "\n" + stderr).trim();
     log(`Tests passed`);
@@ -80,7 +81,7 @@ export async function runTests(
 export async function cloneRepo(repo: string): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "janitor-"));
   log(`Cloning ${repo} into ${dir}`);
-  await exec("gh", ["repo", "clone", repo, dir, "--", "--depth=1"]);
+  await exec("gh", ["repo", "clone", repo, dir, "--", "--depth=1"], { env: ghEnv() });
   return dir;
 }
 
@@ -89,7 +90,7 @@ export async function cleanupRepo(dir: string): Promise<void> {
 }
 
 function gitAuthArgs(): string[] {
-  const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+  const token = currentToken() ?? process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN;
   if (!token) return [];
   const header = `AUTHORIZATION: basic ${Buffer.from(`x-access-token:${token}`).toString("base64")}`;
   return ["-c", `http.https://github.com/.extraheader=${header}`];
@@ -97,7 +98,9 @@ function gitAuthArgs(): string[] {
 
 export async function deleteRemoteBranch(repo: string, branchName: string): Promise<void> {
   try {
-    await exec("gh", ["api", "-X", "DELETE", `repos/${repo}/git/refs/heads/${branchName}`]);
+    await exec("gh", ["api", "-X", "DELETE", `repos/${repo}/git/refs/heads/${branchName}`], {
+      env: ghEnv(),
+    });
     log(`Deleted remote branch ${branchName} on ${repo}`);
   } catch {
     // Branch may not exist on remote (never pushed) — ignore
@@ -105,11 +108,11 @@ export async function deleteRemoteBranch(repo: string, branchName: string): Prom
 }
 
 export async function createBranch(repoDir: string, branchName: string): Promise<void> {
-  await exec("git", ["checkout", "-b", branchName], { cwd: repoDir });
+  await exec("git", ["checkout", "-b", branchName], { cwd: repoDir, env: ghEnv() });
 }
 
 export async function hasChanges(repoDir: string): Promise<boolean> {
-  const { stdout } = await exec("git", ["status", "--porcelain"], { cwd: repoDir });
+  const { stdout } = await exec("git", ["status", "--porcelain"], { cwd: repoDir, env: ghEnv() });
   return stdout.trim().length > 0;
 }
 
@@ -118,9 +121,12 @@ export async function commitAndPush(
   branchName: string,
   message: string
 ): Promise<void> {
-  await exec("git", ["add", "-A"], { cwd: repoDir });
-  await exec("git", ["commit", "-m", message], { cwd: repoDir });
-  await exec("git", [...gitAuthArgs(), "push", "origin", branchName], { cwd: repoDir });
+  await exec("git", ["add", "-A"], { cwd: repoDir, env: ghEnv() });
+  await exec("git", ["commit", "-m", message], { cwd: repoDir, env: ghEnv() });
+  await exec("git", [...gitAuthArgs(), "push", "origin", branchName], {
+    cwd: repoDir,
+    env: ghEnv(),
+  });
 }
 
 export async function createPR(
@@ -131,15 +137,19 @@ export async function createPR(
   base: string
 ): Promise<number> {
   log(`Creating PR for ${repo}: ${title}`);
-  const { stdout } = await exec("gh", [
-    "pr", "create",
-    "--repo", repo,
-    "--title", title,
-    "--body", body,
-    "--head", head,
-    "--base", base,
-    "--label", "janitor-agent",
-  ]);
+  const { stdout } = await exec(
+    "gh",
+    [
+      "pr", "create",
+      "--repo", repo,
+      "--title", title,
+      "--body", body,
+      "--head", head,
+      "--base", base,
+      "--label", "janitor-agent",
+    ],
+    { env: ghEnv() },
+  );
   // gh pr create outputs the PR URL, extract the number
   const match = stdout.trim().match(/\/pull\/(\d+)/);
   if (!match) throw new Error(`Could not parse PR number from: ${stdout}`);
@@ -148,13 +158,17 @@ export async function createPR(
 
 export async function ensureLabelExists(repo: string): Promise<void> {
   try {
-    await exec("gh", [
-      "label", "create", "janitor-agent",
-      "--repo", repo,
-      "--description", "Automated maintenance PR from janitor-agent",
-      "--color", "0E8A16",
-      "--force",
-    ]);
+    await exec(
+      "gh",
+      [
+        "label", "create", "janitor-agent",
+        "--repo", repo,
+        "--description", "Automated maintenance PR from janitor-agent",
+        "--color", "0E8A16",
+        "--force",
+      ],
+      { env: ghEnv() },
+    );
   } catch {
     // Label may already exist, that's fine
   }
@@ -166,11 +180,15 @@ interface PRStatus {
 }
 
 export async function checkPRStatus(repo: string, prNumber: number): Promise<PRStatus> {
-  const { stdout } = await exec("gh", [
-    "pr", "view", String(prNumber),
-    "--repo", repo,
-    "--json", "state,reviews,comments",
-  ]);
+  const { stdout } = await exec(
+    "gh",
+    [
+      "pr", "view", String(prNumber),
+      "--repo", repo,
+      "--json", "state,reviews,comments",
+    ],
+    { env: ghEnv() },
+  );
   const data = JSON.parse(stdout);
   const state = data.state as PRStatus["state"];
 
@@ -182,19 +200,27 @@ export async function checkPRStatus(repo: string, prNumber: number): Promise<PRS
 }
 
 export async function getOpenJanitorPRs(repo: string): Promise<number[]> {
-  const { stdout } = await exec("gh", [
-    "pr", "list",
-    "--repo", repo,
-    "--label", "janitor-agent",
-    "--state", "open",
-    "--json", "number",
-  ]);
+  const { stdout } = await exec(
+    "gh",
+    [
+      "pr", "list",
+      "--repo", repo,
+      "--label", "janitor-agent",
+      "--state", "open",
+      "--json", "number",
+    ],
+    { env: ghEnv() },
+  );
   const prs = JSON.parse(stdout) as { number: number }[];
   return prs.map((p) => p.number);
 }
 
 export async function getPRDiff(repo: string, prNumber: number): Promise<string> {
-  const { stdout } = await exec("gh", ["pr", "diff", String(prNumber), "--repo", repo]);
+  const { stdout } = await exec(
+    "gh",
+    ["pr", "diff", String(prNumber), "--repo", repo],
+    { env: ghEnv() },
+  );
   return stdout;
 }
 
@@ -203,7 +229,11 @@ export async function postPRComment(
   prNumber: number,
   body: string,
 ): Promise<void> {
-  await exec("gh", ["pr", "comment", String(prNumber), "--repo", repo, "--body", body]);
+  await exec(
+    "gh",
+    ["pr", "comment", String(prNumber), "--repo", repo, "--body", body],
+    { env: ghEnv() },
+  );
   log(`Posted comment on PR #${prNumber} in ${repo}`);
 }
 
@@ -212,11 +242,15 @@ export async function closePR(
   prNumber: number,
   comment: string,
 ): Promise<void> {
-  await exec("gh", [
-    "pr", "close", String(prNumber),
-    "--repo", repo,
-    "--comment", comment,
-  ]);
+  await exec(
+    "gh",
+    [
+      "pr", "close", String(prNumber),
+      "--repo", repo,
+      "--comment", comment,
+    ],
+    { env: ghEnv() },
+  );
   log(`Closed PR #${prNumber} in ${repo}`);
 }
 
@@ -225,11 +259,15 @@ export async function getPRCloseReason(
   prNumber: number,
 ): Promise<string | undefined> {
   try {
-    const { stdout } = await exec("gh", [
-      "pr", "view", String(prNumber),
-      "--repo", repo,
-      "--json", "comments",
-    ]);
+    const { stdout } = await exec(
+      "gh",
+      [
+        "pr", "view", String(prNumber),
+        "--repo", repo,
+        "--json", "comments",
+      ],
+      { env: ghEnv() },
+    );
     const data = JSON.parse(stdout);
     const comments = data.comments as { body: string; createdAt: string }[];
     if (!comments || comments.length === 0) return undefined;
@@ -244,11 +282,15 @@ export async function getPRComments(
   repo: string,
   prNumber: number
 ): Promise<string[]> {
-  const { stdout } = await exec("gh", [
-    "pr", "view", String(prNumber),
-    "--repo", repo,
-    "--json", "comments,reviews",
-  ]);
+  const { stdout } = await exec(
+    "gh",
+    [
+      "pr", "view", String(prNumber),
+      "--repo", repo,
+      "--json", "comments,reviews",
+    ],
+    { env: ghEnv() },
+  );
   const data = JSON.parse(stdout);
   const comments: string[] = [];
 

@@ -1,9 +1,10 @@
 import { loadConfig } from "../config";
 import { loadState, saveState } from "../state";
 import { loadBacklog, getNextTask, updateTaskStatus } from "../backlog";
-import { getTask, getSettings, getAllRepoConfigs, updateJob } from "../../db/index";
+import { getTask, getSettings, getAllRepoConfigs, getRepoOwnerToken, updateJob } from "../../db/index";
 import { executeTask } from "../action";
 import { runReconcileJob } from "./reconcile-job";
+import { runWithToken } from "../auth-context";
 import {
   cloneRepo,
   cleanupRepo,
@@ -75,93 +76,101 @@ export async function runActionJob(options: ActionJobOptions = {}): Promise<Acti
       continue;
     }
 
-    const task = targetTaskId
-      ? await getTask(targetTaskId)
-      : getNextTask(await loadBacklog(repoConfig.name));
-    if (!task || (targetTaskId && task.repo !== repoConfig.name)) {
-      if (!targetTaskId) log(`${repoConfig.name}: no pending tasks`);
+    const ownerToken = await getRepoOwnerToken(repoConfig.name);
+    if (!ownerToken && !process.env.GH_TOKEN && !process.env.GITHUB_TOKEN) {
+      log(`Skipping ${repoConfig.name}: no owner token stored and no GH_TOKEN fallback set`);
       continue;
     }
 
-    log(`Executing task "${task.title}" for ${repoConfig.name}`);
-    await updateTaskStatus(repoConfig.name, task.id, "in_progress", undefined, currentJobId);
-    if (currentJobId) {
-      await updateJob(currentJobId, { summary: `${task.title} (${repoConfig.name})` });
-    }
-
-    log(`Cloning ${repoConfig.name}...`);
-    const branchName = `janitor/${task.id}`;
-    const repoDir = await cloneRepo(repoConfig.name);
-    try {
-      await createBranch(repoDir, branchName);
-
-      if (repoConfig.install_command) {
-        log(`Installing dependencies...`);
-        await installDeps(repoDir, repoConfig.install_command);
+    await runWithToken(ownerToken, async () => {
+      const task = targetTaskId
+        ? await getTask(targetTaskId)
+        : getNextTask(await loadBacklog(repoConfig.name));
+      if (!task || (targetTaskId && task.repo !== repoConfig.name)) {
+        if (!targetTaskId) log(`${repoConfig.name}: no pending tasks`);
+        return;
       }
 
-      // Baseline check: verify tests pass BEFORE making any changes
-      if (repoConfig.test_command) {
-        log("Running baseline tests (before changes)...");
-        const baseline = await runTests(repoDir, repoConfig.test_command);
-        if (!baseline.passed) {
-          log(`Baseline tests fail on clean clone — skipping task (not our fault)`);
-          log(`Baseline error: ${baseline.output.slice(0, 2000)}`);
-          await updateTaskStatus(repoConfig.name, task.id, "pending"); // keep pending, not failed
-          continue;
+      log(`Executing task "${task.title}" for ${repoConfig.name}`);
+      await updateTaskStatus(repoConfig.name, task.id, "in_progress", undefined, currentJobId);
+      if (currentJobId) {
+        await updateJob(currentJobId, { summary: `${task.title} (${repoConfig.name})` });
+      }
+
+      log(`Cloning ${repoConfig.name}...`);
+      const branchName = `janitor/${task.id}`;
+      const repoDir = await cloneRepo(repoConfig.name);
+      try {
+        await createBranch(repoDir, branchName);
+
+        if (repoConfig.install_command) {
+          log(`Installing dependencies...`);
+          await installDeps(repoDir, repoConfig.install_command);
         }
-        log("Baseline tests pass");
-      }
 
-      const { result: taskResult, costUsd } = await executeTask(task, repoDir, config, settings, repoConfig, log);
-      costBudget.remaining -= costUsd;
-      result.costUsd += costUsd;
-      result.taskTitle = task.title;
-      log(`Action cost: $${costUsd.toFixed(4)}, remaining: $${costBudget.remaining.toFixed(4)}`);
+        // Baseline check: verify tests pass BEFORE making any changes
+        if (repoConfig.test_command) {
+          log("Running baseline tests (before changes)...");
+          const baseline = await runTests(repoDir, repoConfig.test_command);
+          if (!baseline.passed) {
+            log(`Baseline tests fail on clean clone — skipping task (not our fault)`);
+            log(`Baseline error: ${baseline.output.slice(0, 2000)}`);
+            await updateTaskStatus(repoConfig.name, task.id, "pending"); // keep pending, not failed
+            return;
+          }
+          log("Baseline tests pass");
+        }
 
-      if (!taskResult.has_changes || !(await hasChanges(repoDir))) {
-        log(`No changes produced for task "${task.title}", marking skipped`);
-        await updateTaskStatus(repoConfig.name, task.id, "skipped");
+        const { result: taskResult, costUsd } = await executeTask(task, repoDir, config, settings, repoConfig, log);
+        costBudget.remaining -= costUsd;
+        result.costUsd += costUsd;
+        result.taskTitle = task.title;
+        log(`Action cost: $${costUsd.toFixed(4)}, remaining: $${costBudget.remaining.toFixed(4)}`);
+
+        if (!taskResult.has_changes || !(await hasChanges(repoDir))) {
+          log(`No changes produced for task "${task.title}", marking skipped`);
+          await updateTaskStatus(repoConfig.name, task.id, "skipped");
+          await deleteRemoteBranch(repoConfig.name, branchName);
+          return;
+        }
+
+        if (dryRun) {
+          log(`[DRY RUN] Would create PR: ${taskResult.pr_title}`);
+          log(`Summary:\n${taskResult.summary}`);
+          await updateTaskStatus(repoConfig.name, task.id, "pending");
+          return;
+        }
+
+        log(`Creating PR: ${taskResult.pr_title}`);
+        await ensureLabelExists(repoConfig.name);
+        await commitAndPush(repoDir, branchName, taskResult.pr_title);
+        const prNumber = await createPR(
+          repoConfig.name,
+          taskResult.pr_title,
+          taskResult.pr_body,
+          branchName,
+          repoConfig.branch,
+        );
+
+        await updateTaskStatus(repoConfig.name, task.id, "in_progress", prNumber);
+        state.open_prs.push({
+          repo: repoConfig.name,
+          pr_number: prNumber,
+          branch: branchName,
+          created_at: new Date().toISOString(),
+          last_checked: new Date().toISOString(),
+        });
+
+        result.prNumber = prNumber;
+        log(`Created PR #${prNumber} for "${task.title}"`);
+      } catch (err) {
+        log(`Error executing task "${task.title}": ${err}`);
+        await updateTaskStatus(repoConfig.name, task.id, "failed");
         await deleteRemoteBranch(repoConfig.name, branchName);
-        continue;
+      } finally {
+        await cleanupRepo(repoDir);
       }
-
-      if (dryRun) {
-        log(`[DRY RUN] Would create PR: ${taskResult.pr_title}`);
-        log(`Summary:\n${taskResult.summary}`);
-        await updateTaskStatus(repoConfig.name, task.id, "pending");
-        continue;
-      }
-
-      log(`Creating PR: ${taskResult.pr_title}`);
-      await ensureLabelExists(repoConfig.name);
-      await commitAndPush(repoDir, branchName, taskResult.pr_title);
-      const prNumber = await createPR(
-        repoConfig.name,
-        taskResult.pr_title,
-        taskResult.pr_body,
-        branchName,
-        repoConfig.branch,
-      );
-
-      await updateTaskStatus(repoConfig.name, task.id, "in_progress", prNumber);
-      state.open_prs.push({
-        repo: repoConfig.name,
-        pr_number: prNumber,
-        branch: branchName,
-        created_at: new Date().toISOString(),
-        last_checked: new Date().toISOString(),
-      });
-
-      result.prNumber = prNumber;
-      log(`Created PR #${prNumber} for "${task.title}"`);
-    } catch (err) {
-      log(`Error executing task "${task.title}": ${err}`);
-      await updateTaskStatus(repoConfig.name, task.id, "failed");
-      await deleteRemoteBranch(repoConfig.name, branchName);
-    } finally {
-      await cleanupRepo(repoDir);
-    }
+    });
   }
 
   await saveState(state);

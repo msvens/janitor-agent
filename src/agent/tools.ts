@@ -9,6 +9,7 @@ import { resolve, relative, dirname } from "node:path";
 import { execFile, exec } from "node:child_process";
 import { promisify } from "node:util";
 import type { ToolDefinition } from "./loop";
+import { ghEnv } from "./auth-context";
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
@@ -214,6 +215,7 @@ export function createTools(
             cwd,
             timeout: 30_000,
             maxBuffer: 1024 * 1024,
+            env: ghEnv(),
           });
           const output = (stdout + (stderr ? `\nSTDERR:\n${stderr}` : ""))
             .trim()
