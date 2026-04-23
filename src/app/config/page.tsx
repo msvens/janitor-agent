@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { TrashIcon, PlusIcon } from "@heroicons/react/24/outline";
+import { AddRepoDialog } from "@/components/add-repo-dialog";
 
 interface RepoConfig {
   name: string;
@@ -125,6 +126,7 @@ export default function ConfigPage() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [env, setEnv] = useState<EnvStatus | null>(null);
   const [saving, setSaving] = useState(false);
+  const [addRepoOpen, setAddRepoOpen] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -171,13 +173,13 @@ export default function ConfigPage() {
     setRepos(updated);
   }
 
-  function addRepo() {
+  function addRepoFromPick(picked: { name: string; branch: string }) {
     const defaultPlan = prompts.find((p) => p.type === "plan");
     const defaultAction = prompts.find((p) => p.type === "action");
     setRepos([...repos, {
-      name: "owner/repo",
+      name: picked.name,
       aggressiveness: 2,
-      branch: "main",
+      branch: picked.branch,
       plan_prompt_id: defaultPlan?.id,
       action_prompt_id: defaultAction?.id,
     }]);
@@ -396,7 +398,7 @@ export default function ConfigPage() {
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold">Repos</h3>
             <button
-              onClick={addRepo}
+              onClick={() => setAddRepoOpen(true)}
               className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300"
             >
               <PlusIcon className="w-4 h-4" />
@@ -469,6 +471,12 @@ export default function ConfigPage() {
         </section>
 
       </div>
+      <AddRepoDialog
+        open={addRepoOpen}
+        onClose={() => setAddRepoOpen(false)}
+        excludeNames={new Set(repos.map((r) => r.name))}
+        onPick={addRepoFromPick}
+      />
     </div>
   );
 }
