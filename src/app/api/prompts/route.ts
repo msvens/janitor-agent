@@ -1,5 +1,6 @@
 import "@/lib/init";
 import { getAllPrompts, upsertPrompt } from "@/db/index";
+import { requireAdmin } from "@/lib/authz";
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -11,6 +12,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const body = await request.json();
   const { name, type, content, description } = body;
 

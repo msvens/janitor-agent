@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useIsAdmin } from "@/lib/use-role";
 
 interface LogEntry {
   message: string;
@@ -8,6 +9,7 @@ interface LogEntry {
 }
 
 export function LiveStream({ jobId }: { jobId: string }) {
+  const isAdmin = useIsAdmin();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [done, setDone] = useState(false);
   const [aborting, setAborting] = useState(false);
@@ -61,7 +63,7 @@ export function LiveStream({ jobId }: { jobId: string }) {
             {done ? "Completed" : "Running..."}
           </span>
         </div>
-        {!done && (
+        {!done && isAdmin && (
           <button
             onClick={handleAbort}
             disabled={aborting}

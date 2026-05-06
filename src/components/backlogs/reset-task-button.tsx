@@ -3,10 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowPathIcon } from "@heroicons/react/24/outline";
+import { useIsAdmin } from "@/lib/use-role";
 
 export function ResetTaskButton({ taskId, repo }: { taskId: string; repo: string }) {
+  const isAdmin = useIsAdmin();
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+
+  if (!isAdmin) return null;
 
   async function handleReset() {
     setLoading(true);

@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { TrashIcon, PlusIcon } from "@heroicons/react/24/outline";
 import { AddRepoDialog } from "@/components/add-repo-dialog";
+import { useIsAdmin } from "@/lib/use-role";
 
 interface RepoConfig {
   name: string;
@@ -120,6 +122,30 @@ function Toggle({ label, checked, onChange }: {
 }
 
 export default function ConfigPage() {
+  const isAdmin = useIsAdmin();
+  if (!isAdmin) return <AdminOnlyMessage page="config" />;
+  return <ConfigPageInner />;
+}
+
+function AdminOnlyMessage({ page }: { page: string }) {
+  return (
+    <div className="max-w-md mx-auto mt-16 text-center">
+      <h1 className="text-xl font-semibold text-gray-100 mb-2">Admin only</h1>
+      <p className="text-sm text-gray-400 mb-6">
+        The {page} page is restricted to admins. Sign in with admin credentials
+        to access it.
+      </p>
+      <Link
+        href="/"
+        className="inline-block px-4 py-2 text-sm rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200"
+      >
+        Back to dashboard
+      </Link>
+    </div>
+  );
+}
+
+function ConfigPageInner() {
   const [config, setConfig] = useState<BootstrapConfig | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [repos, setRepos] = useState<RepoConfig[]>([]);

@@ -24,6 +24,7 @@ Web UI at `src/app/`, agent code at `src/agent/`, database at `src/db/`.
 - **DB `settings` table** — runtime config, editable from the UI: model names (claude_model, gemini_model, ollama_model), per-role backend selection (planner/action/fix/review), enables, cost/step limits, autopilot.
 - **DB `repos` table** — repos to maintain. Managed via UI.
 - **Env vars** — `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (get one at https://aistudio.google.com/apikey). Keys never live in config.yaml.
+- **Auth env vars** — `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` (one OAuth App per environment); `ADMIN_GITHUB_IDS` (comma-separated GitHub user IDs allowed to sign in as admin); `VIEWER_GITHUB_IDS` (allowed to sign in as viewer — read-only). Empty `VIEWER_GITHUB_IDS` disables the viewer flow. Admins implicitly have viewer access too.
 - **One-time migration**: on first `getSettings()` call, any pre-existing `claude.model` / `ollama.model` from config.yaml is copied into the settings table. After that the YAML fields are ignored.
 
 ### Key modules
@@ -36,6 +37,12 @@ Web UI at `src/app/`, agent code at `src/agent/`, database at `src/db/`.
 - `src/lib/job-manager.ts` — Singleton: one job at a time, AbortController, SSE events
 - `src/db/schema.ts` — Drizzle schema: repos, tasks, settings, tracked_prs, jobs, job_steps
 - `src/db/index.ts` — All database queries
+
+### Auth & roles
+- Two NextAuth provider IDs share one GitHub OAuth App (per env): `github-admin` requests `repo read:user user:email`; `github-viewer` requests only `read:user user:email`. The OAuth App's Authorization callback URL must be the prefix `/api/auth/callback` so both `.../callback/github-admin` and `.../callback/github-viewer` match.
+- `users.role` is `admin` or `viewer`. Server gates: `requireAdmin()` from `src/lib/authz.ts` on every mutation API route. Client gates: `useIsAdmin()` from `src/lib/use-role.ts` for hiding admin-only controls.
+- Viewers have `encryptedAccessToken = NULL`. All git/gh ops still use the *repo owner's* token (resolved via `getRepoOwnerToken()`), so viewer presence never affects agent behavior.
+- Re-sign-in via the viewer flow does NOT downgrade an existing admin (preserved by `upsertUser`). Re-sign-in via the admin flow does upgrade a viewer to admin.
 
 ### Backend selection
 - `selectBackend(role, aggressiveness, settings)` where `role = "planner" | "action" | "fix" | "review"`

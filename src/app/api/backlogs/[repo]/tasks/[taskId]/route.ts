@@ -1,4 +1,5 @@
 import { getTask, updateTaskStatus, deleteTask } from "@/db/index";
+import { requireAdmin } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ repo: string; taskId: string }> },
 ) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { taskId } = await params;
   const body = await request.json();
 
@@ -35,6 +39,9 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ repo: string; taskId: string }> },
 ) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { taskId } = await params;
   await deleteTask(taskId);
   return NextResponse.json({ ok: true });

@@ -34,13 +34,16 @@ export async function DELETE() {
 
   // Best-effort: revoke the OAuth grant on GitHub's side so janitor disappears
   // from github.com/settings/applications. Don't block DB cleanup on failure.
+  // Viewers don't have a stored token, so skip revocation entirely.
   let githubRevoked = false;
-  try {
-    const token = decryptToken(user.encryptedAccessToken);
-    await revokeGitHubGrant(token);
-    githubRevoked = true;
-  } catch (err) {
-    console.error("[account] GitHub grant revocation failed:", (err as Error).message);
+  if (user.encryptedAccessToken) {
+    try {
+      const token = decryptToken(user.encryptedAccessToken);
+      await revokeGitHubGrant(token);
+      githubRevoked = true;
+    } catch (err) {
+      console.error("[account] GitHub grant revocation failed:", (err as Error).message);
+    }
   }
 
   const result = await deleteUserAndRepos(githubId);

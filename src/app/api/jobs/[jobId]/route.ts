@@ -1,5 +1,6 @@
 import { getJob } from "@/db/index";
 import { jobManager } from "@/lib/job-manager";
+import { requireAdmin } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,9 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ jobId: string }> },
 ) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { jobId } = await params;
   const aborted = jobManager.abortJob(jobId);
   if (!aborted) {
