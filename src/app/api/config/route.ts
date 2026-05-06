@@ -10,6 +10,7 @@ import {
   getUserByGithubId,
 } from "@/db/index";
 import { auth } from "@/auth";
+import { requireAdmin } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +33,9 @@ export async function GET() {
 
 // PUT updates runtime settings and/or repos (NOT bootstrap config)
 export async function PUT(request: NextRequest) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   try {
     const body = await request.json();
 

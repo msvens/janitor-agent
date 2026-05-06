@@ -1,5 +1,6 @@
 import "@/lib/init";
 import { getPrompt, upsertPrompt, deletePrompt } from "@/db/index";
+import { requireAdmin } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,9 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { id } = await params;
   const body = await request.json();
   await upsertPrompt({ id, ...body });
@@ -29,6 +33,9 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { id } = await params;
   const prompt = await getPrompt(id);
   if (prompt?.is_default) {

@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PlayIcon } from "@heroicons/react/24/outline";
+import { useIsAdmin } from "@/lib/use-role";
 
 export function RunTaskButton({ taskId, repo }: { taskId: string; repo: string }) {
+  const isAdmin = useIsAdmin();
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  if (!isAdmin) return null;
 
   async function handleConfirm() {
     setConfirming(false);

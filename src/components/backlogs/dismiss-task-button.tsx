@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { XMarkIcon } from "@heroicons/react/24/outline";
+import { useIsAdmin } from "@/lib/use-role";
 
 export function DismissTaskButton({ taskId, repo }: { taskId: string; repo: string }) {
+  const isAdmin = useIsAdmin();
   const [confirming, setConfirming] = useState(false);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const router = useRouter();
+
+  if (!isAdmin) return null;
 
   async function handleDismiss() {
     setSaving(true);

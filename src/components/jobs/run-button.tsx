@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAppStatus } from "@/components/status-provider";
+import { useIsAdmin } from "@/lib/use-role";
 import type { JobType } from "@/lib/job-manager";
 
 const descriptions: Record<JobType, string> = {
@@ -23,11 +24,14 @@ export function RunButton({
   label: string;
   className?: string;
 }) {
+  const isAdmin = useIsAdmin();
   const { jobRunning: busy } = useAppStatus();
   const [loading, setLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
+
+  if (!isAdmin) return null;
 
   function handleClick() {
     setError(null);

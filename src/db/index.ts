@@ -278,7 +278,7 @@ export async function getRepoOwnerToken(repoName: string): Promise<string | null
     .innerJoin(schema.users, eq(schema.repos.addedByUserId, schema.users.id))
     .where(eq(schema.repos.name, repoName))
     .limit(1);
-  if (!rows[0]) return null;
+  if (!rows[0] || !rows[0].encrypted) return null;
   try {
     return decryptToken(rows[0].encrypted);
   } catch (err) {
@@ -799,39 +799,68 @@ export async function getJobSteps(jobId: string) {
 
 // --- Users ---
 
+export type UserRole = "admin" | "viewer";
+
 export interface UserRow {
   id: number;
   githubId: string;
   githubLogin: string;
-  encryptedAccessToken: string;
-  tokenUpdatedAt: string;
+  role: UserRole;
+  encryptedAccessToken: string | null;
+  tokenUpdatedAt: string | null;
   createdAt: string;
 }
 
 export async function upsertUser(input: {
   githubId: string;
   githubLogin: string;
-  encryptedAccessToken: string;
+  role: UserRole;
+  encryptedAccessToken?: string | null;
 }): Promise<void> {
   const db = getDb();
   const now = new Date().toISOString();
+  // Don't downgrade an existing admin to viewer if they re-sign-in via the
+  // viewer flow. Only the "admin" provider can promote a user to admin; the
+  // "viewer" provider preserves whatever role exists on the row.
+  const existing = await getUserByGithubId(input.githubId);
+  const finalRole: UserRole =
+    input.role === "admin"
+      ? "admin"
+      : (existing?.role ?? "viewer");
+
+  // If we have a token, store it. If we don't (viewer flow with no
+  // existing token), keep whatever's there — never wipe a previously-stored
+  // admin token just because the user re-signed-in as viewer.
+  const insertValues = {
+    githubId: input.githubId,
+    githubLogin: input.githubLogin,
+    role: finalRole,
+    encryptedAccessToken: input.encryptedAccessToken ?? null,
+    tokenUpdatedAt: input.encryptedAccessToken ? now : null,
+    createdAt: now,
+  };
+
+  const updateSet: Record<string, unknown> = {
+    githubLogin: input.githubLogin,
+    role: finalRole,
+  };
+  if (input.encryptedAccessToken) {
+    updateSet.encryptedAccessToken = input.encryptedAccessToken;
+    updateSet.tokenUpdatedAt = now;
+  }
+
   await db
     .insert(schema.users)
-    .values({
-      githubId: input.githubId,
-      githubLogin: input.githubLogin,
-      encryptedAccessToken: input.encryptedAccessToken,
-      tokenUpdatedAt: now,
-      createdAt: now,
-    })
+    .values(insertValues)
     .onConflictDoUpdate({
       target: schema.users.githubId,
-      set: {
-        githubLogin: input.githubLogin,
-        encryptedAccessToken: input.encryptedAccessToken,
-        tokenUpdatedAt: now,
-      },
+      set: updateSet,
     });
+}
+
+export async function getUserRole(githubId: string): Promise<UserRole | null> {
+  const user = await getUserByGithubId(githubId);
+  return (user?.role as UserRole | undefined) ?? null;
 }
 
 export async function getUserByGithubId(githubId: string): Promise<UserRow | null> {

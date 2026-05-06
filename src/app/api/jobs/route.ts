@@ -1,6 +1,7 @@
 import { listJobs } from "@/db/index";
 import { jobManager } from "@/lib/job-manager";
 import type { JobType } from "@/lib/job-manager";
+import { requireAdmin } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const body = await request.json();
   const { type, repo, taskId, prNumber } = body as {
     type: JobType; repo?: string; taskId?: string; prNumber?: number;

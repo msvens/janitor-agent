@@ -17,7 +17,10 @@ export function MobileNav({ isOpen, onClose }: MobileNavProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const user = session?.user;
+  const isAdmin = user?.role === "admin";
   const [signoutOpen, setSignoutOpen] = useState(false);
+
+  const visibleNav = NAV_ITEMS.filter((item) => isAdmin || !item.adminOnly);
 
   function handleLogoutClick() {
     onClose();
@@ -44,7 +47,7 @@ export function MobileNav({ isOpen, onClose }: MobileNavProps) {
           <h1 className="text-lg font-semibold text-gray-100">Janitor Agent</h1>
         </div>
         <nav className="p-2 space-y-1">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+          {visibleNav.map(({ href, label, icon: Icon }) => {
             const active =
               href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (

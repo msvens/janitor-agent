@@ -1,4 +1,5 @@
 import { jobManager } from "@/lib/job-manager";
+import { requireAdmin } from "@/lib/authz";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const { action } = await request.json();
 
   if (action === "start") {

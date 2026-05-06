@@ -6,8 +6,9 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   githubId: text("github_id").notNull().unique(),
   githubLogin: text("github_login").notNull(),
-  encryptedAccessToken: text("encrypted_access_token").notNull(),
-  tokenUpdatedAt: text("token_updated_at").notNull(),
+  role: text("role", { enum: ["admin", "viewer"] }).notNull().default("viewer"),
+  encryptedAccessToken: text("encrypted_access_token"),
+  tokenUpdatedAt: text("token_updated_at"),
   createdAt: text("created_at").notNull(),
 });
 

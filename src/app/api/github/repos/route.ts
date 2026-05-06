@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { getUserByGithubId } from "@/db/index";
+import { requireAdmin } from "@/lib/authz";
 import { decryptToken } from "@/lib/token-crypto";
 import { NextResponse } from "next/server";
 
@@ -16,6 +17,9 @@ interface GithubRepo {
 }
 
 export async function GET() {
+  const denied = await requireAdmin();
+  if (denied) return denied;
+
   const session = await auth();
   const githubId = session?.user?.githubId;
   if (!githubId) {
@@ -23,8 +27,8 @@ export async function GET() {
   }
 
   const user = await getUserByGithubId(githubId);
-  if (!user) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  if (!user || !user.encryptedAccessToken) {
+    return NextResponse.json({ error: "User has no stored access token" }, { status: 404 });
   }
 
   const token = decryptToken(user.encryptedAccessToken);

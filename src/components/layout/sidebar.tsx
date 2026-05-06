@@ -17,19 +17,22 @@ import { AutopilotButton } from "./autopilot-button";
 import { SignoutDialog } from "@/components/signout-dialog";
 
 export const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: HomeIcon },
-  { href: "/backlogs", label: "Backlogs", icon: QueueListIcon },
-  { href: "/prs", label: "PRs", icon: CodeBracketIcon },
-  { href: "/jobs", label: "Jobs", icon: PlayIcon },
-  { href: "/prompts", label: "Prompts", icon: DocumentTextIcon },
-  { href: "/config", label: "Config", icon: CogIcon },
+  { href: "/", label: "Dashboard", icon: HomeIcon, adminOnly: false },
+  { href: "/backlogs", label: "Backlogs", icon: QueueListIcon, adminOnly: false },
+  { href: "/prs", label: "PRs", icon: CodeBracketIcon, adminOnly: false },
+  { href: "/jobs", label: "Jobs", icon: PlayIcon, adminOnly: false },
+  { href: "/prompts", label: "Prompts", icon: DocumentTextIcon, adminOnly: true },
+  { href: "/config", label: "Config", icon: CogIcon, adminOnly: true },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const user = session?.user;
+  const isAdmin = user?.role === "admin";
   const [signoutOpen, setSignoutOpen] = useState(false);
+
+  const visibleNav = NAV_ITEMS.filter((item) => isAdmin || !item.adminOnly);
 
   return (
     <aside className="hidden md:flex w-56 bg-gray-900 border-r border-gray-800 flex-col">
@@ -37,10 +40,12 @@ export function Sidebar() {
         <h1 className="text-lg font-semibold text-gray-100">Janitor Agent</h1>
       </div>
       <nav className="p-2 space-y-1">
-        <div className="mb-2">
-          <AutopilotButton />
-        </div>
-        {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        {isAdmin && (
+          <div className="mb-2">
+            <AutopilotButton />
+          </div>
+        )}
+        {visibleNav.map(({ href, label, icon: Icon }) => {
           const active =
             href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (

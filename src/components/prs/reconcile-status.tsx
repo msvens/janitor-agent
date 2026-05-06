@@ -2,8 +2,10 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useIsAdmin } from "@/lib/use-role";
 
 export function ReconcileStatus() {
+  const isAdmin = useIsAdmin();
   const [status, setStatus] = useState<"starting" | "running" | "done" | "error" | "busy">("starting");
   const [logs, setLogs] = useState<string[]>([]);
   const [expanded, setExpanded] = useState(true);
@@ -12,6 +14,7 @@ export function ReconcileStatus() {
   const startedRef = useRef(false);
 
   useEffect(() => {
+    if (!isAdmin) return;
     if (startedRef.current) return;
     startedRef.current = true;
 
@@ -64,12 +67,13 @@ export function ReconcileStatus() {
     }
 
     run();
-  }, [router]);
+  }, [router, isAdmin]);
 
   useEffect(() => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
+  if (!isAdmin) return null;
   if (status === "done" && logs.length === 0) return null;
 
   return (
