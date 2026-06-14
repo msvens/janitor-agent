@@ -17,4 +17,5 @@ ollama:
 #   ANTHROPIC_API_KEY — Claude
 #   GEMINI_API_KEY    — Google Gemini (create at https://aistudio.google.com/apikey)
 
-# Authentication: see .env.local (generate with: pnpm run auth:init <password>)
+# Authentication: GitHub OAuth — see .env.example (copy to .env.local and fill in
+# AUTH_SECRET, TOKEN_ENCRYPTION_KEY, GITHUB_CLIENT_ID/SECRET, ADMIN_GITHUB_IDS).
