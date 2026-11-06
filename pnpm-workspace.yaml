@@ -1,0 +1,13 @@
+# pnpm 11 fails `pnpm install` (ERR_PNPM_IGNORED_BUILDS) when a dependency has a
+# build script that is neither allowed nor explicitly ignored. None of these are
+# needed: pnpm 10 skipped them with only a warning and janitor ran fine.
+#   better-sqlite3 — optional drizzle-orm driver; janitor uses Postgres (pg)
+#   esbuild, sharp, unrs-resolver — ship prebuilt binaries as optional deps
+#   protobufjs — postinstall is a version check only
+# If a new dependency adds a build script, pnpm will fail again: decide here.
+allowBuilds:
+  better-sqlite3: false
+  esbuild: false
+  protobufjs: false
+  sharp: false
+  unrs-resolver: false
